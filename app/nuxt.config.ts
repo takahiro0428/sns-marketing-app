@@ -40,6 +40,7 @@ export default defineNuxtConfig({
     firebase: {
       gen: 2,
       nodeVersion: '22',
+      region: 'asia-northeast1',
     },
   },
 
