@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: '22'
 
 jobs:
   build-and-deploy:
@@ -47,15 +47,22 @@ jobs:
           VERTEX_AI_LOCATION: ${{ secrets.VERTEX_AI_LOCATION || 'us-central1' }}
 
       - name: Install Cloud Functions dependencies
-        # Nitro creates node_modules/.nitro/ with alternative package versions
-        # that break npm's dependency tree resolution (fsTop null error on npm 10.2-10.5).
-        # Remove it before install to avoid confusing npm's arborist.
+        # Nitro traces external dependencies and places partial copies in
+        # .output/server/node_modules/ (only the files the app actually imports).
+        # When npm install runs, it sees these partial packages already at the
+        # correct version and skips reinstalling them. This breaks firebase-functions
+        # which imports firebase-admin subpaths (e.g. app-check) not used by app code.
+        # Fix: remove the entire Nitro-traced node_modules so npm installs full packages.
+        # Nitro defaults firebase-functions to "latest" in the generated package.json
+        # because the app code doesn't import it directly (only Nitro's runtime does).
+        # Pin it to a known-good version for reproducible builds.
         # --ignore-scripts: skips postinstall scripts from transitive deps (e.g. puppeteer).
-        #   Verified safe: firebase-functions has no postinstall script.
         # --no-package-lock: this is a build artifact, not a source project.
         run: |
           cd .output/server
-          rm -rf node_modules/.nitro
+          rm -rf node_modules
+          sed -i 's/"firebase-functions": "latest"/"firebase-functions": "^7.2.0"/' package.json
+          grep -q '"firebase-functions": "\^7.2.0"' package.json || { echo "ERROR: firebase-functions version pinning failed"; exit 1; }
           npm install --ignore-scripts --no-package-lock
 
       - name: Deploy Cloud Functions
