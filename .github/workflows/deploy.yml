@@ -44,7 +44,7 @@ jobs:
           FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
           FIRESTORE_DATABASE_ID: ${{ secrets.FIRESTORE_DATABASE_ID || '(default)' }}
           VERTEX_AI_MODEL: ${{ secrets.VERTEX_AI_MODEL || 'gemini-2.0-flash' }}
-          VERTEX_AI_LOCATION: ${{ secrets.VERTEX_AI_LOCATION || 'us-central1' }}
+          VERTEX_AI_LOCATION: ${{ secrets.VERTEX_AI_LOCATION || 'asia-northeast1' }}
 
       - name: Install Cloud Functions dependencies
         # Nitro traces external dependencies and places partial copies in
