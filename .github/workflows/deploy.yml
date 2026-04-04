@@ -56,7 +56,7 @@ jobs:
           entryPoint: ./app
 
       - name: Install Cloud Functions dependencies
-        run: npm install --prefix .output/server
+        run: cd .output/server && npm install
 
       - name: Deploy Cloud Functions
         uses: w9jds/firebase-action@master
