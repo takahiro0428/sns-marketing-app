@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "target": "sns-marketing-web",
+    "site": "sns-marketing-web",
     "public": ".output/public",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
