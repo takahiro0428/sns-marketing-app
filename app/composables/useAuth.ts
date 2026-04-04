@@ -82,6 +82,11 @@ export function useAuth() {
     await firebaseSignOut($auth)
     currentUser.value = null
     userProfile.value = null
+    // Full page reload clears all module-level composable state
+    // This prevents stale data from leaking across user sessions
+    if (import.meta.client) {
+      window.location.href = '/login'
+    }
   }
 
   return {

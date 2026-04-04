@@ -3,7 +3,6 @@ import {
   doc,
   addDoc,
   updateDoc,
-  deleteDoc,
   getDocs,
   getDoc,
   query,
@@ -104,8 +103,12 @@ export function useProjects() {
   }
 
   const deleteProject = async (id: string) => {
-    const docRef = doc($firestore, 'projects', id)
-    await deleteDoc(docRef)
+    const { apiFetch } = useApiFetch()
+    // Server-side cascading delete (removes all child collections)
+    await apiFetch('/api/projects/delete', {
+      method: 'POST',
+      body: { projectId: id },
+    })
     if (currentProject.value?.id === id) {
       currentProject.value = null
     }

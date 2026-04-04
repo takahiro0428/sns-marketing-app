@@ -4,5 +4,8 @@
 
 <script setup lang="ts">
 definePageMeta({ middleware: 'auth' })
-navigateTo('/projects')
+
+onMounted(() => {
+  navigateTo('/projects')
+})
 </script>

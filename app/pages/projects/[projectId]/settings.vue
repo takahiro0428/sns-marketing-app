@@ -333,8 +333,12 @@ const handleTestX = async () => {
 
 const handleDeleteProject = async () => {
   showDeleteConfirm.value = false
-  await deleteProject(projectId.value)
-  router.push('/projects')
+  try {
+    await deleteProject(projectId.value)
+    router.push('/projects')
+  } catch {
+    projectError.value = 'プロジェクトの削除に失敗しました。しばらくしてから再度お試しください。'
+  }
 }
 
 onMounted(() => {
