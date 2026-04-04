@@ -74,7 +74,7 @@ jobs:
       - name: Deploy Cloud Functions
         uses: w9jds/firebase-action@v15.13.0
         with:
-          args: deploy --only functions
+          args: deploy --only functions:server
         env:
           GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
