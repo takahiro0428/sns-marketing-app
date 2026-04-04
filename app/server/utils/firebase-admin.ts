@@ -26,5 +26,7 @@ export function getAdminApp(): App {
 }
 
 export function getAdminFirestore(): Firestore {
-  return getFirestore(getAdminApp())
+  const config = useRuntimeConfig()
+  const databaseId = config.firestoreDatabaseId || '(default)'
+  return getFirestore(getAdminApp(), databaseId)
 }

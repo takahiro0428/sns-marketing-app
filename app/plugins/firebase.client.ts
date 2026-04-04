@@ -23,7 +23,10 @@ export default defineNuxtPlugin(() => {
   }
 
   const auth: Auth = getAuth(app)
-  const firestore: Firestore = getFirestore(app)
+  const databaseId = config.public.firestoreDatabaseId || '(default)'
+  const firestore: Firestore = databaseId === '(default)'
+    ? getFirestore(app)
+    : getFirestore(app, databaseId)
   const storage: FirebaseStorage = getStorage(app)
 
   return {

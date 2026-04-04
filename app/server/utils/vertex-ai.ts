@@ -16,10 +16,16 @@ export function getVertexAI(): VertexAI {
   return vertexAI
 }
 
+export function getVertexAiModelName(): string {
+  const config = useRuntimeConfig()
+  return config.vertexAiModel || 'gemini-2.0-flash'
+}
+
 export async function generateContent(prompt: string, systemInstruction?: string): Promise<string> {
   const vertex = getVertexAI()
+  const modelName = getVertexAiModelName()
   const model = vertex.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: modelName,
     generationConfig: {
       maxOutputTokens: 8192,
       temperature: 0.7,

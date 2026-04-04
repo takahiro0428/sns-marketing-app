@@ -12,8 +12,10 @@ export default defineNuxtConfig({
     firebaseAdminProjectId: process.env.FIREBASE_ADMIN_PROJECT_ID || '',
     firebaseAdminClientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL || '',
     firebaseAdminPrivateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY || '',
+    firestoreDatabaseId: process.env.FIRESTORE_DATABASE_ID || '(default)',
     vertexAiProjectId: process.env.VERTEX_AI_PROJECT_ID || '',
     vertexAiLocation: process.env.VERTEX_AI_LOCATION || 'us-central1',
+    vertexAiModel: process.env.VERTEX_AI_MODEL || 'gemini-2.0-flash',
     noteApiEndpoint: process.env.NOTE_API_ENDPOINT || 'https://note.com/api',
     xApiKey: process.env.X_API_KEY || '',
     xApiSecret: process.env.X_API_SECRET || '',
@@ -29,6 +31,7 @@ export default defineNuxtConfig({
       firebaseStorageBucket: process.env.FIREBASE_STORAGE_BUCKET || '',
       firebaseMessagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || '',
       firebaseAppId: process.env.FIREBASE_APP_ID || '',
+      firestoreDatabaseId: process.env.FIRESTORE_DATABASE_ID || '(default)',
     },
   },
 
