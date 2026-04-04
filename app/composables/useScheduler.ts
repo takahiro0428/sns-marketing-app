@@ -83,15 +83,23 @@ export function useScheduler() {
   ) => {
     let currentTime = new Date(startDate)
 
+    // Validate active hours to prevent infinite loop
+    if (activeHoursStart >= activeHoursEnd) {
+      throw new Error('INVALID_ACTIVE_HOURS: start must be less than end')
+    }
+
     for (const chapter of chapters) {
       for (const platform of platforms) {
-        // Ensure within active hours
+        // Ensure within active hours (with max 48 iteration guard)
+        let guard = 0
         while (
-          currentTime.getHours() < activeHoursStart ||
-          currentTime.getHours() >= activeHoursEnd
+          (currentTime.getHours() < activeHoursStart ||
+          currentTime.getHours() >= activeHoursEnd) &&
+          guard < 48
         ) {
           currentTime.setHours(currentTime.getHours() + 1)
           currentTime.setMinutes(0)
+          guard++
         }
 
         await addSchedule(projectId, chapter.articleId, platform, new Date(currentTime))

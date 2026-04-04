@@ -10,6 +10,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'FILE_NOT_FOUND' })
   }
 
+  // Enforce 10MB file size limit (matches Storage rules)
+  const MAX_FILE_SIZE = 10 * 1024 * 1024
+  if (file.data.length > MAX_FILE_SIZE) {
+    throw createError({ statusCode: 413, statusMessage: 'FILE_TOO_LARGE' })
+  }
+
   const contentType = file.type || ''
   const fileName = file.filename || ''
 

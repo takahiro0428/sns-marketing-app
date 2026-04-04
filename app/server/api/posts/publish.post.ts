@@ -16,6 +16,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = getAdminFirestore()
+  const auth = event.context.auth as { uid: string } | undefined
 
   // Fetch article
   const articleDoc = await db.collection('articles').doc(body.articleId).get()
@@ -52,9 +53,42 @@ export default defineEventHandler(async (event) => {
   }
 
   // Post to platform
-  if (body.platform === 'note') {
-    return await postToNote(article, settings)
-  } else {
-    return await postToX(article, settings)
+  let postResult: { postId: string; postUrl: string }
+  try {
+    if (body.platform === 'note') {
+      postResult = await postToNote(article, settings)
+    } else {
+      postResult = await postToX(article, settings)
+    }
+  } catch (error: unknown) {
+    // Create failed post log server-side
+    const errMsg = error instanceof Error ? error.message : 'Unknown error'
+    await db.collection('postLogs').add({
+      projectId: body.projectId,
+      userId: auth?.uid || article.userId || '',
+      articleId: body.articleId,
+      platform: body.platform,
+      status: 'failed',
+      errorMessage: errMsg,
+      retryCount: 0,
+      createdAt: new Date(),
+    })
+    throw error
   }
+
+  // Create success post log server-side (ensures scheduler posts are also logged)
+  await db.collection('postLogs').add({
+    projectId: body.projectId,
+    userId: auth?.uid || article.userId || '',
+    articleId: body.articleId,
+    platform: body.platform,
+    status: 'success',
+    externalPostId: postResult.postId,
+    externalPostUrl: postResult.postUrl,
+    retryCount: 0,
+    postedAt: new Date(),
+    createdAt: new Date(),
+  })
+
+  return postResult
 })

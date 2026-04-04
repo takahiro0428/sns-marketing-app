@@ -1,16 +1,12 @@
 import {
   collection,
-  doc,
   getDocs,
   query,
   where,
   orderBy,
-  serverTimestamp,
-  addDoc,
-  updateDoc,
   type DocumentData,
 } from 'firebase/firestore'
-import type { PostLog, PostPlatform, PostStatus } from '~/types'
+import type { PostLog, PostPlatform } from '~/types'
 
 export function usePostLogs() {
   const { $firestore } = useNuxtApp()
@@ -61,22 +57,12 @@ export function usePostLogs() {
     articleId: string,
     projectId: string,
     platform: PostPlatform,
-  ): Promise<PostLog> => {
+  ): Promise<{ postId: string; postUrl: string }> => {
     if (!currentUser.value) throw new Error('AUTH_REQUIRED')
     posting.value = true
 
-    // Create pending log entry
-    const logRef = await addDoc(logsCol(), {
-      projectId,
-      userId: currentUser.value.uid,
-      articleId,
-      platform,
-      status: 'posting' as PostStatus,
-      retryCount: 0,
-      createdAt: serverTimestamp(),
-    })
-
     try {
+      // Server-side publish creates postLog entries automatically
       const result = await apiFetch<{
         postId: string
         postUrl: string
@@ -85,31 +71,11 @@ export function usePostLogs() {
         body: { articleId, projectId, platform },
       })
 
-      await updateDoc(doc($firestore, 'postLogs', logRef.id), {
-        status: 'success' as PostStatus,
-        externalPostId: result.postId,
-        externalPostUrl: result.postUrl,
-        postedAt: serverTimestamp(),
-      })
-
+      // Refresh logs to show the server-created entry
       await fetchPostLogs(projectId)
-      const updatedLogs = postLogs.value
-      return updatedLogs.find((l) => l.id === logRef.id) || mapDoc({
-        projectId,
-        userId: currentUser.value!.uid,
-        articleId,
-        platform,
-        status: 'success',
-        externalPostId: result.postId,
-        externalPostUrl: result.postUrl,
-        retryCount: 0,
-      }, logRef.id)
+      return result
     } catch (error: unknown) {
-      const errMsg = error instanceof Error ? error.message : 'Unknown error'
-      await updateDoc(doc($firestore, 'postLogs', logRef.id), {
-        status: 'failed' as PostStatus,
-        errorMessage: errMsg,
-      })
+      // Server also creates a failed log entry, refresh to show it
       await fetchPostLogs(projectId)
       throw error
     } finally {

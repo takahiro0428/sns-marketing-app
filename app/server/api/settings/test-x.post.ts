@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const { createHmac } = await import('crypto')
+    const { createHmac, randomBytes } = await import('crypto')
     const { decrypt } = await import('~/server/utils/encryption')
 
     // Decrypt X credentials
@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
 
     const oauthParams: Record<string, string> = {
       oauth_consumer_key: decrypted.apiKey,
-      oauth_nonce: Math.random().toString(36).substring(2),
+      oauth_nonce: randomBytes(24).toString('base64url'),
       oauth_signature_method: 'HMAC-SHA1',
       oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
       oauth_token: decrypted.accessToken,
