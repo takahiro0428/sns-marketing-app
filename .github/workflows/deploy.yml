@@ -55,6 +55,9 @@ jobs:
           projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
           entryPoint: ./app
 
+      - name: Install Cloud Functions dependencies
+        run: npm install --prefix .output/server
+
       - name: Deploy Cloud Functions
         uses: w9jds/firebase-action@master
         with:
