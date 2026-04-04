@@ -596,8 +596,13 @@ const renderedBody = computed(() => {
   html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul class="list-disc pl-5 space-y-1">$&</ul>')
   // Horizontal rules
   html = html.replace(/^---$/gm, '<hr class="my-4 border-gray-300" />')
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline">$1</a>')
+  // Links (sanitize: only allow http/https protocols to prevent XSS via javascript: URIs)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, text, url) => {
+    if (/^https?:\/\//.test(url)) {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800 underline">${text}</a>`
+    }
+    return text
+  })
   // Paragraphs (double newline)
   html = html.replace(/\n\n/g, '</p><p class="mb-3">')
   // Single newlines to <br>

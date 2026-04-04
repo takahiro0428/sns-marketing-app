@@ -315,6 +315,23 @@
       danger
       @confirm="handleDelete"
     />
+
+    <!-- Operation error banner -->
+    <Teleport to="body">
+      <div
+        v-if="operationError"
+        class="fixed top-4 right-4 z-50 max-w-sm bg-red-50 border border-red-200 rounded-lg p-4 shadow-lg"
+      >
+        <div class="flex items-start gap-3">
+          <p class="text-sm text-red-700 flex-1">{{ operationError }}</p>
+          <button class="text-red-400 hover:text-red-600" @click="operationError = ''">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -354,6 +371,7 @@ const showDeleteConfirm = ref(false)
 const editingChapterId = ref<string | null>(null)
 const savingChapter = ref(false)
 const generateError = ref('')
+const operationError = ref('')
 
 const generateForm = ref({
   contentSourceId: '',
@@ -430,7 +448,7 @@ const handleApprove = async () => {
     await updatePlanStatus(currentPlan.value.id, 'approved')
     await fetchPlans(projectId.value)
   } catch {
-    // Non-blocking: status update failure is shown via UI state
+    operationError.value = '計画の承認に失敗しました'
   }
 }
 
@@ -446,7 +464,7 @@ const handleDelete = async () => {
     await deletePlan(planId, projectId.value)
     selectedPlanId.value = null
   } catch {
-    // Non-blocking: deletion failure keeps the plan visible
+    operationError.value = '計画の削除に失敗しました'
   }
 }
 
@@ -480,7 +498,7 @@ const saveChapter = async (chapterId: string) => {
     }
     editingChapterId.value = null
   } catch {
-    // Non-blocking: save failure keeps the edit form open
+    operationError.value = '章の保存に失敗しました'
   } finally {
     savingChapter.value = false
   }
@@ -503,7 +521,7 @@ const moveChapter = async (index: number, direction: 'up' | 'down') => {
   try {
     await reorderChapters(selectedPlanId.value, orderedIds)
   } catch {
-    // Non-blocking: reorder failure is recovered on next fetch
+    operationError.value = '章の並び替えに失敗しました'
   }
 }
 

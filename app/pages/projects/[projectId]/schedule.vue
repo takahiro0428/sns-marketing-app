@@ -201,6 +201,33 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Delete confirmation -->
+    <CommonConfirmDialog
+      v-model="showDeleteConfirm"
+      title="スケジュールを削除しますか？"
+      message="このスケジュールを削除します。この操作は取り消せません。"
+      confirm-text="削除する"
+      :danger="true"
+      @confirm="confirmDeleteSchedule"
+    />
+
+    <!-- Error banner -->
+    <Teleport to="body">
+      <div
+        v-if="errorMessage"
+        class="fixed top-4 right-4 z-50 max-w-sm bg-red-50 border border-red-200 rounded-lg p-4 shadow-lg"
+      >
+        <div class="flex items-start gap-3">
+          <p class="text-sm text-red-700 flex-1">{{ errorMessage }}</p>
+          <button class="text-red-400 hover:text-red-600" @click="errorMessage = ''">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -218,8 +245,11 @@ const { apiFetch } = useApiFetch()
 
 const showAddSchedule = ref(false)
 const showAutoSchedule = ref(false)
+const showDeleteConfirm = ref(false)
 const addingSchedule = ref(false)
 const autoScheduling = ref(false)
+const errorMessage = ref('')
+const deleteTargetId = ref('')
 
 const noteThrottle = ref<Record<string, unknown> | null>(null)
 const xThrottle = ref<Record<string, unknown> | null>(null)
@@ -261,6 +291,7 @@ const loadThrottleStatus = async () => {
 }
 
 const handleAddSchedule = async () => {
+  errorMessage.value = ''
   addingSchedule.value = true
   try {
     await addSchedule(
@@ -271,6 +302,8 @@ const handleAddSchedule = async () => {
     )
     showAddSchedule.value = false
     newSchedule.value = { articleId: '', platform: 'note', scheduledAt: '' }
+  } catch {
+    errorMessage.value = 'スケジュールの追加に失敗しました'
   } finally {
     addingSchedule.value = false
   }
@@ -278,13 +311,17 @@ const handleAddSchedule = async () => {
 
 const handleAutoSchedule = async () => {
   if (!currentProject.value || autoSchedulePlatforms.value.length === 0) return
+  errorMessage.value = ''
   autoScheduling.value = true
   try {
     const approvedArticles = articles.value
       .filter((a) => ['approved', 'draft'].includes(a.status))
       .map((a) => ({ articleId: a.id }))
 
-    if (approvedArticles.length === 0) return
+    if (approvedArticles.length === 0) {
+      errorMessage.value = '対象となる記事がありません。先に記事を生成してください。'
+      return
+    }
 
     await autoScheduleChapters(
       projectId.value,
@@ -297,13 +334,25 @@ const handleAutoSchedule = async () => {
       currentProject.value.activeHoursEnd,
     )
     showAutoSchedule.value = false
+  } catch {
+    errorMessage.value = '自動スケジュール生成に失敗しました'
   } finally {
     autoScheduling.value = false
   }
 }
 
-const handleDeleteSchedule = async (id: string) => {
-  await deleteSchedule(id, projectId.value)
+const handleDeleteSchedule = (id: string) => {
+  deleteTargetId.value = id
+  showDeleteConfirm.value = true
+}
+
+const confirmDeleteSchedule = async () => {
+  showDeleteConfirm.value = false
+  try {
+    await deleteSchedule(deleteTargetId.value, projectId.value)
+  } catch {
+    errorMessage.value = 'スケジュールの削除に失敗しました'
+  }
 }
 
 onMounted(async () => {

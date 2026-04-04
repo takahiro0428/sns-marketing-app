@@ -12,6 +12,39 @@
         <CommonStatusBadge :status="currentProject.status" type="project" />
       </div>
 
+      <!-- Workflow progress stepper -->
+      <div class="card">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">ワークフロー</h3>
+        <div class="flex flex-col sm:flex-row gap-2 sm:gap-0">
+          <NuxtLink
+            v-for="(step, i) in workflowSteps"
+            :key="i"
+            :to="step.path"
+            class="flex items-center gap-3 flex-1 p-3 rounded-lg transition-colors"
+            :class="step.done ? 'bg-green-50' : (step.current ? 'bg-indigo-50 ring-2 ring-indigo-300' : 'bg-gray-50')"
+          >
+            <div
+              class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+              :class="step.done ? 'bg-green-500 text-white' : (step.current ? 'bg-indigo-500 text-white' : 'bg-gray-300 text-white')"
+            >
+              <svg v-if="step.done" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+              </svg>
+              <span v-else>{{ i + 1 }}</span>
+            </div>
+            <div class="min-w-0">
+              <p class="text-sm font-medium" :class="step.done ? 'text-green-700' : (step.current ? 'text-indigo-700' : 'text-gray-500')">
+                {{ step.label }}
+              </p>
+              <p class="text-xs text-gray-500 truncate">{{ step.description }}</p>
+            </div>
+            <svg v-if="i < workflowSteps.length - 1" class="w-4 h-4 text-gray-300 shrink-0 hidden sm:block ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </NuxtLink>
+        </div>
+      </div>
+
       <!-- Stats cards -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="card">
@@ -130,6 +163,47 @@ const { postLogs, fetchPostLogs } = usePostLogs()
 const postedCount = computed(() =>
   articles.value.filter((a) => ['posted_note', 'posted_x', 'posted_all'].includes(a.status)).length,
 )
+
+const workflowSteps = computed(() => {
+  const pid = projectId.value
+  const hasContent = contents.value.length > 0
+  const hasPlan = plans.value.length > 0
+  const hasArticle = articles.value.length > 0
+  const hasPosted = postedCount.value > 0
+
+  const firstIncomplete = !hasContent ? 0 : !hasPlan ? 1 : !hasArticle ? 2 : !hasPosted ? 3 : -1
+
+  return [
+    {
+      label: 'コンテンツ登録',
+      description: hasContent ? `${contents.value.length}件登録済み` : '元ネタをアップロード',
+      path: `/projects/${pid}/contents`,
+      done: hasContent,
+      current: firstIncomplete === 0,
+    },
+    {
+      label: '配信計画',
+      description: hasPlan ? `${plans.value.length}件作成済み` : 'AIが計画を提案',
+      path: `/projects/${pid}/plans`,
+      done: hasPlan,
+      current: firstIncomplete === 1,
+    },
+    {
+      label: '記事生成',
+      description: hasArticle ? `${articles.value.length}件生成済み` : 'AIが記事を作成',
+      path: `/projects/${pid}/articles`,
+      done: hasArticle,
+      current: firstIncomplete === 2,
+    },
+    {
+      label: '投稿',
+      description: hasPosted ? `${postedCount.value}件投稿済み` : 'NoteとXに配信',
+      path: `/projects/${pid}/schedule`,
+      done: hasPosted,
+      current: firstIncomplete === 3,
+    },
+  ]
+})
 
 onMounted(async () => {
   const pid = projectId.value
