@@ -61,9 +61,15 @@ jobs:
         run: |
           cd .output/server
           rm -rf node_modules
-          sed -i 's/"firebase-functions": "latest"/"firebase-functions": "^7.2.0"/' package.json
-          grep -q '"firebase-functions": "\^7.2.0"' package.json || { echo "ERROR: firebase-functions version pinning failed"; exit 1; }
+          node --input-type=commonjs -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.dependencies['firebase-functions'] = '^7.2.0';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          "
           npm install --ignore-scripts --no-package-lock
+          test -f node_modules/firebase-admin/lib/esm/app-check/index.js || { echo "ERROR: firebase-admin/app-check ESM module missing"; exit 1; }
+          test -f node_modules/firebase-functions/lib/esm/common/providers/https.mjs || { echo "ERROR: firebase-functions ESM module missing"; exit 1; }
 
       - name: Deploy Cloud Functions
         uses: w9jds/firebase-action@v15.13.0
