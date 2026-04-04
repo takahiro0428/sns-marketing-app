@@ -1,14 +1,5 @@
 {
   "projects": {
     "default": "your-firebase-project-id"
-  },
-  "targets": {
-    "your-firebase-project-id": {
-      "hosting": {
-        "sns-marketing-web": [
-          "sns-marketing-web"
-        ]
-      }
-    }
   }
 }
