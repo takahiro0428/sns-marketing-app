@@ -46,6 +46,27 @@ jobs:
           VERTEX_AI_MODEL: ${{ secrets.VERTEX_AI_MODEL || 'gemini-2.0-flash' }}
           VERTEX_AI_LOCATION: ${{ secrets.VERTEX_AI_LOCATION || 'us-central1' }}
 
+      - name: Install Cloud Functions dependencies
+        # Nitro creates node_modules/.nitro/ with alternative package versions
+        # that break npm's dependency tree resolution (fsTop null error on npm 10.2-10.5).
+        # Remove it before install to avoid confusing npm's arborist.
+        # --ignore-scripts: skips postinstall scripts from transitive deps (e.g. puppeteer).
+        #   Verified safe: firebase-functions has no postinstall script.
+        # --no-package-lock: this is a build artifact, not a source project.
+        run: |
+          cd .output/server
+          rm -rf node_modules/.nitro
+          npm install --ignore-scripts --no-package-lock
+
+      - name: Deploy Cloud Functions
+        uses: w9jds/firebase-action@v15.13.0
+        with:
+          args: deploy --only functions
+        env:
+          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          PROJECT_PATH: ./app
+
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
@@ -55,20 +76,8 @@ jobs:
           projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
           entryPoint: ./app
 
-      - name: Install Cloud Functions dependencies
-        run: cd .output/server && npm install
-
-      - name: Deploy Cloud Functions
-        uses: w9jds/firebase-action@master
-        with:
-          args: deploy --only functions
-        env:
-          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-          PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          PROJECT_PATH: ./app
-
       - name: Deploy Firestore Rules & Indexes
-        uses: w9jds/firebase-action@master
+        uses: w9jds/firebase-action@v15.13.0
         with:
           args: deploy --only firestore
         env:
@@ -77,7 +86,7 @@ jobs:
           PROJECT_PATH: ./app
 
       - name: Deploy Storage Rules
-        uses: w9jds/firebase-action@master
+        uses: w9jds/firebase-action@v15.13.0
         with:
           args: deploy --only storage
         env:
