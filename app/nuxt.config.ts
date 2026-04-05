@@ -15,7 +15,7 @@ export default defineNuxtConfig({
     firestoreDatabaseId: process.env.FIRESTORE_DATABASE_ID || '(default)',
     vertexAiProjectId: process.env.VERTEX_AI_PROJECT_ID || '',
     vertexAiLocation: process.env.VERTEX_AI_LOCATION || 'asia-northeast1',
-    vertexAiModel: process.env.VERTEX_AI_MODEL || 'gemini-2.0-flash',
+    vertexAiModel: process.env.VERTEX_AI_MODEL || 'gemini-2.5-flash',
     noteApiEndpoint: process.env.NOTE_API_ENDPOINT || 'https://note.com/api',
     xApiKey: process.env.X_API_KEY || '',
     xApiSecret: process.env.X_API_SECRET || '',
