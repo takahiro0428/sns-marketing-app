@@ -32,11 +32,17 @@
       "runtime": "nodejs22"
     }
   ],
-  "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  },
-  "storage": {
-    "rules": "storage.rules"
-  }
+  "firestore": [
+    {
+      "database": "sns-marketing-web",
+      "rules": "firestore.rules",
+      "indexes": "firestore.indexes.json"
+    }
+  ],
+  "storage": [
+    {
+      "bucket": "sns-marketing-web",
+      "rules": "storage.rules"
+    }
+  ]
 }
