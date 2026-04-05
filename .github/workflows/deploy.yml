@@ -74,16 +74,6 @@ jobs:
           test -f node_modules/firebase-admin/lib/esm/app-check/index.js || { echo "ERROR: firebase-admin/app-check ESM module missing"; exit 1; }
           test -f node_modules/firebase-functions/lib/esm/common/providers/https.mjs || { echo "ERROR: firebase-functions ESM module missing"; exit 1; }
 
-      - name: Delete us-central1 function if exists
-        uses: w9jds/firebase-action@v15.13.0
-        continue-on-error: true
-        with:
-          args: functions:delete server --region us-central1 --force
-        env:
-          GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-          PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          PROJECT_PATH: ./app
-
       - name: Deploy Cloud Functions
         uses: w9jds/firebase-action@v15.13.0
         with:
