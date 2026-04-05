@@ -41,6 +41,7 @@ export interface Project {
 // ==========================================
 
 export type ContentSourceType = 'text' | 'pdf' | 'markdown' | 'url'
+export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
 export interface ContentSource {
   id: string
@@ -53,8 +54,19 @@ export interface ContentSource {
   rawText: string
   summary?: string
   tags: string[]
+  processingStatus?: ProcessingStatus
   createdAt: Timestamp
   updatedAt: Timestamp
+}
+
+export interface ContentChunk {
+  id: string
+  contentSourceId: string
+  projectId: string
+  userId: string
+  chunkIndex: number
+  text: string
+  createdAt: Timestamp
 }
 
 // ==========================================
@@ -67,11 +79,12 @@ export interface DistributionPlan {
   id: string
   projectId: string
   userId: string
-  contentSourceId: string
+  contentSourceId?: string
   title: string
   totalChapters: number
   status: PlanStatus
   aiRationale: string
+  userRequirements?: string
   createdAt: Timestamp
   updatedAt: Timestamp
 }
@@ -118,6 +131,7 @@ export interface Article {
   notePostedAt?: Timestamp
   xPostedAt?: Timestamp
   generationPrompt?: string
+  userRequirements?: string
   createdAt: Timestamp
   updatedAt: Timestamp
 }
@@ -238,8 +252,8 @@ export interface ProjectFormData {
 }
 
 export interface PlanGenerationRequest {
-  contentSourceId: string
   projectId: string
+  userRequirements?: string
   suggestedChapters?: number
 }
 
@@ -247,9 +261,9 @@ export interface ArticleGenerationRequest {
   projectId: string
   chapterId: string
   planId: string
-  contentSourceId: string
   chapterTitle: string
   chapterSynopsis: string
+  userRequirements?: string
   tone?: string
   style?: string
 }

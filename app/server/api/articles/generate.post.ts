@@ -1,13 +1,14 @@
 import { generateContent } from '~/server/utils/vertex-ai'
 import { getAdminFirestore } from '~/server/utils/firebase-admin'
+import { retrieveRelevantContent } from '~/server/utils/content-retrieval'
 
 interface GenerateRequest {
   projectId: string
   chapterId: string
   planId: string
-  contentSourceId: string
   chapterTitle: string
   chapterSynopsis: string
+  userRequirements?: string
   tone?: string
   style?: string
 }
@@ -15,7 +16,7 @@ interface GenerateRequest {
 export default defineEventHandler(async (event) => {
   const body = await readBody<GenerateRequest>(event)
 
-  if (!body.projectId || !body.chapterId || !body.contentSourceId) {
+  if (!body.projectId || !body.chapterId) {
     throw createError({ statusCode: 400, statusMessage: 'MISSING_REQUIRED_FIELDS' })
   }
 
@@ -25,20 +26,6 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = getAdminFirestore()
-
-  // Fetch content source
-  const contentDoc = await db.collection('contentSources').doc(body.contentSourceId).get()
-  if (!contentDoc.exists) {
-    throw createError({ statusCode: 404, statusMessage: 'CONTENT_SOURCE_NOT_FOUND' })
-  }
-
-  const content = contentDoc.data()!
-
-  // Verify content source ownership
-  if (content.userId !== auth.uid) {
-    throw createError({ statusCode: 403, statusMessage: 'FORBIDDEN' })
-  }
-  const rawText = content.rawText || ''
 
   // Fetch other chapters in the plan for context
   let otherChapters: string[] = []
@@ -54,8 +41,27 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // Build search query from chapter context + user requirements
+  const searchQuery = [
+    body.chapterTitle,
+    body.chapterSynopsis,
+    body.userRequirements,
+  ].filter(Boolean).join(' ')
+
+  // Retrieve relevant content from all project documents via RAG
+  const contentText = await retrieveRelevantContent(
+    body.projectId,
+    auth.uid,
+    searchQuery,
+    20000,
+  )
+
   const tone = body.tone || '親しみやすく専門的'
   const style = body.style || 'note記事向け'
+
+  const userRequirementsBlock = body.userRequirements
+    ? `\n=== ユーザーからの要求 ===\n${body.userRequirements}\n=== 要求ここまで ===\n\n上記の要求を踏まえて記事を作成してください。`
+    : ''
 
   const systemInstruction = `あなたはSNSマーケティング用の記事を書くプロのライターです。
 noteプラットフォームに投稿する記事を作成してください。
@@ -70,6 +76,7 @@ noteプラットフォームに投稿する記事を作成してください。
 - 文量は1500-3000文字程度
 - AIが書いたとわかりにくい自然な文体
 - 実体験や具体例を織り交ぜた書き方
+- 複数のソースドキュメントが提供された場合は、それらを横断的に活用する
 
 BAN対策の注意点：
 - 明らかにAI生成とわかる定型文を避ける
@@ -88,6 +95,7 @@ BAN対策の注意点：
 
 トーン: ${tone}
 スタイル: ${style}
+${userRequirementsBlock}
 
 === 対象章 ===
 タイトル: ${body.chapterTitle}
@@ -97,7 +105,7 @@ BAN対策の注意点：
 ${otherChapters.join('\n')}
 
 === 元ネタとなるコンテンツ ===
-${rawText.substring(0, 20000)}
+${contentText}
 === コンテンツここまで ===
 
 上記の「対象章」の内容に焦点を当てて記事を執筆してください。`

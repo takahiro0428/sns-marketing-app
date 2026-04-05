@@ -38,6 +38,7 @@ export function usePlans() {
     totalChapters: data.totalChapters,
     status: data.status,
     aiRationale: data.aiRationale || '',
+    userRequirements: data.userRequirements,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   })
@@ -99,7 +100,7 @@ export function usePlans() {
 
   const generatePlan = async (
     projectId: string,
-    contentSourceId: string,
+    userRequirements?: string,
     suggestedChapters?: number,
   ): Promise<{ plan: DistributionPlan; chapters: PlanChapter[] }> => {
     if (!currentUser.value) throw new Error('AUTH_REQUIRED')
@@ -110,21 +111,24 @@ export function usePlans() {
         chapters: Array<{ title: string; synopsis: string }>
       }>('/api/plans/generate', {
         method: 'POST',
-        body: { projectId, contentSourceId, suggestedChapters },
+        body: { projectId, userRequirements, suggestedChapters },
       })
 
       // Save plan
-      const planRef = await addDoc(plansCol(), {
+      const planData: Record<string, unknown> = {
         projectId,
         userId: currentUser.value.uid,
-        contentSourceId,
         title: result.plan.title,
         totalChapters: result.plan.totalChapters,
         status: 'draft' as PlanStatus,
         aiRationale: result.plan.aiRationale,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      })
+      }
+      if (userRequirements) {
+        planData.userRequirements = userRequirements
+      }
+      const planRef = await addDoc(plansCol(), planData)
 
       // Save chapters in batch
       const batch = writeBatch($firestore)
