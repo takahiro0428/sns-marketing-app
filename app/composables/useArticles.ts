@@ -86,7 +86,6 @@ export function useArticles() {
         body: string
         summary: string
         tags: string[]
-        prompt: string
       }>('/api/articles/generate', {
         method: 'POST',
         body: request,
@@ -102,7 +101,6 @@ export function useArticles() {
         summary: result.summary,
         tags: result.tags,
         status: 'draft' as ArticleStatus,
-        generationPrompt: result.prompt,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }

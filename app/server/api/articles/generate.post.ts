@@ -27,6 +27,12 @@ export default defineEventHandler(async (event) => {
 
   const db = getAdminFirestore()
 
+  // Verify project ownership
+  const projectDoc = await db.collection('projects').doc(body.projectId).get()
+  if (!projectDoc.exists || projectDoc.data()!.userId !== auth.uid) {
+    throw createError({ statusCode: 403, statusMessage: 'FORBIDDEN' })
+  }
+
   // Fetch other chapters in the plan for context
   let otherChapters: string[] = []
   if (body.planId) {
@@ -130,6 +136,5 @@ ${contentText}
     body: parsed.body,
     summary: parsed.summary,
     tags: parsed.tags || [],
-    prompt: prompt.substring(0, 500),
   }
 })

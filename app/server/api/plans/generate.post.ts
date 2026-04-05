@@ -22,6 +22,12 @@ export default defineEventHandler(async (event) => {
 
   const db = getAdminFirestore()
 
+  // Verify project ownership
+  const projectDoc = await db.collection('projects').doc(body.projectId).get()
+  if (!projectDoc.exists || projectDoc.data()!.userId !== auth.uid) {
+    throw createError({ statusCode: 403, statusMessage: 'FORBIDDEN' })
+  }
+
   // Verify project has content sources
   const contentSnap = await db.collection('contentSources')
     .where('projectId', '==', body.projectId)
@@ -103,12 +109,15 @@ ${contentText}
     })
   }
 
+  // Cap chapters at 100 to stay within Firestore batch write limits
+  const chapters = Array.isArray(parsed.chapters) ? parsed.chapters.slice(0, 100) : []
+
   return {
     plan: {
       title: parsed.title,
-      totalChapters: parsed.totalChapters,
+      totalChapters: chapters.length,
       aiRationale: parsed.aiRationale,
     },
-    chapters: parsed.chapters,
+    chapters,
   }
 })

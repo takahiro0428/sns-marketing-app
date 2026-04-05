@@ -10,6 +10,7 @@ import {
   where,
   orderBy,
   serverTimestamp,
+  writeBatch,
   type DocumentData,
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
@@ -171,10 +172,12 @@ export function useContents() {
 
   const updateContent = async (id: string, data: { title?: string; tags?: string[]; rawText?: string }) => {
     const docRef = doc($firestore, 'contentSources', id)
-    await updateDoc(docRef, { ...data, updatedAt: serverTimestamp() })
-    // Re-process if rawText was changed
+    const updateData: Record<string, unknown> = { ...data, updatedAt: serverTimestamp() }
     if (data.rawText !== undefined) {
-      await updateDoc(docRef, { processingStatus: 'pending' as ProcessingStatus })
+      updateData.processingStatus = 'pending'
+    }
+    await updateDoc(docRef, updateData)
+    if (data.rawText !== undefined) {
       triggerProcessing(id)
     }
   }
@@ -190,18 +193,27 @@ export function useContents() {
         console.warn('Failed to delete storage object, continuing')
       }
     }
-    // Delete associated chunks (non-blocking)
-    try {
-      const chunksQuery = query(
-        collection($firestore, 'contentChunks'),
-        where('contentSourceId', '==', id),
-      )
-      const chunksSnap = await getDocs(chunksQuery)
-      for (const chunkDoc of chunksSnap.docs) {
-        await deleteDoc(chunkDoc.ref)
+    // Delete associated chunks (non-blocking, batched in groups of 500)
+    if (currentUser.value) {
+      try {
+        const chunksQuery = query(
+          collection($firestore, 'contentChunks'),
+          where('contentSourceId', '==', id),
+          where('userId', '==', currentUser.value.uid),
+        )
+        const chunksSnap = await getDocs(chunksQuery)
+        const batchSize = 500
+        for (let i = 0; i < chunksSnap.docs.length; i += batchSize) {
+          const batch = writeBatch($firestore)
+          const end = Math.min(i + batchSize, chunksSnap.docs.length)
+          for (let j = i; j < end; j++) {
+            batch.delete(chunksSnap.docs[j].ref)
+          }
+          await batch.commit()
+        }
+      } catch {
+        console.warn('Failed to delete content chunks, continuing')
       }
-    } catch {
-      console.warn('Failed to delete content chunks, continuing')
     }
     const docRef = doc($firestore, 'contentSources', id)
     await deleteDoc(docRef)

@@ -34,8 +34,19 @@ export default defineEventHandler(async (event) => {
 
   const projectId = content.projectId as string
 
-  // Mark as processing
-  await contentRef.update({ processingStatus: 'processing', updatedAt: FieldValue.serverTimestamp() })
+  // Atomically check and set processingStatus to prevent concurrent processing
+  const acquired = await db.runTransaction(async (tx) => {
+    const freshDoc = await tx.get(contentRef)
+    if (freshDoc.data()?.processingStatus === 'processing') {
+      return false
+    }
+    tx.update(contentRef, { processingStatus: 'processing', updatedAt: FieldValue.serverTimestamp() })
+    return true
+  })
+
+  if (!acquired) {
+    return { chunksCreated: 0, skipped: true }
+  }
 
   try {
     // 1. Delete existing chunks for this content source (idempotent re-processing)
@@ -45,11 +56,16 @@ export default defineEventHandler(async (event) => {
       .get()
 
     if (!existingChunks.empty) {
-      const batch = db.batch()
-      for (const doc of existingChunks.docs) {
-        batch.delete(doc.ref)
+      // Batch deletes in groups of 500 (Firestore limit)
+      const deleteBatchSize = 500
+      for (let i = 0; i < existingChunks.docs.length; i += deleteBatchSize) {
+        const batch = db.batch()
+        const end = Math.min(i + deleteBatchSize, existingChunks.docs.length)
+        for (let j = i; j < end; j++) {
+          batch.delete(existingChunks.docs[j].ref)
+        }
+        await batch.commit()
       }
-      await batch.commit()
     }
 
     // 2. Chunk the text
@@ -64,11 +80,10 @@ export default defineEventHandler(async (event) => {
 
     // 4. Save chunks with embeddings to Firestore
     const chunksCol = db.collection('contentChunks')
-    // Use batched writes (max 500 per batch)
-    const batchSize = 500
-    for (let i = 0; i < chunks.length; i += batchSize) {
+    const writeBatchSize = 500
+    for (let i = 0; i < chunks.length; i += writeBatchSize) {
       const batch = db.batch()
-      const end = Math.min(i + batchSize, chunks.length)
+      const end = Math.min(i + writeBatchSize, chunks.length)
       for (let j = i; j < end; j++) {
         const ref = chunksCol.doc()
         batch.set(ref, {
@@ -89,12 +104,15 @@ export default defineEventHandler(async (event) => {
 
     return { chunksCreated: chunks.length }
   } catch (error) {
-    // Mark as failed but don't block the user
-    await contentRef.update({ processingStatus: 'failed', updatedAt: FieldValue.serverTimestamp() })
+    // Mark as failed but don't block the error response
+    try {
+      await contentRef.update({ processingStatus: 'failed', updatedAt: FieldValue.serverTimestamp() })
+    } catch {
+      // Status update failure is non-blocking
+    }
     throw createError({
       statusCode: 500,
       statusMessage: 'PROCESSING_FAILED',
-      data: { message: error instanceof Error ? error.message : 'Unknown error' },
     })
   }
 })

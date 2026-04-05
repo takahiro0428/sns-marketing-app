@@ -98,12 +98,15 @@ async function fetchAllChunks(
   db: FirebaseFirestore.Firestore,
   projectId: string,
   userId: string,
-  _charLimit: number,
+  charLimit: number,
 ): Promise<RetrievedContent[]> {
+  // Estimate max chunks needed: charLimit / average chunk size (~600 chars) + margin
+  const estimatedMaxChunks = Math.ceil(charLimit / 600) + 10
   const snap = await db.collection('contentChunks')
     .where('projectId', '==', projectId)
     .where('userId', '==', userId)
     .orderBy('chunkIndex', 'asc')
+    .limit(estimatedMaxChunks)
     .get()
 
   if (snap.empty) return []
@@ -162,9 +165,8 @@ async function resolveSourceTitles(
   const titleMap = new Map<string, string>()
   if (sourceIds.length === 0) return titleMap
 
-  const docs = await Promise.all(
-    sourceIds.map((id) => db.collection('contentSources').doc(id).get()),
-  )
+  const refs = sourceIds.map((id) => db.collection('contentSources').doc(id))
+  const docs = await db.getAll(...refs)
   for (const doc of docs) {
     if (doc.exists) {
       titleMap.set(doc.id, doc.data()!.title as string)

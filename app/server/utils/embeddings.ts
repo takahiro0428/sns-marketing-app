@@ -27,6 +27,11 @@ function getAuthClient(): GoogleAuth {
 export function chunkText(text: string, chunkSize = 800, overlap = 200): string[] {
   if (!text || text.trim().length === 0) return []
 
+  // Guard against invalid parameters that could cause infinite loops
+  if (overlap >= chunkSize) {
+    overlap = Math.floor(chunkSize / 4)
+  }
+
   const trimmed = text.trim()
   if (trimmed.length <= chunkSize) return [trimmed]
 
@@ -55,8 +60,10 @@ export function chunkText(text: string, chunkSize = 800, overlap = 200): string[
       while (current.length > chunkSize) {
         const splitAt = findSplitPoint(current, chunkSize)
         chunks.push(current.slice(0, splitAt).trim())
+        // Ensure forward progress: overlapStart must be < splitAt
         const overlapStart = Math.max(0, splitAt - overlap)
-        current = current.slice(overlapStart).trim()
+        const nextStart = Math.max(overlapStart, splitAt > 0 ? 1 : 0)
+        current = current.slice(nextStart).trim()
       }
     }
   }
@@ -70,7 +77,7 @@ export function chunkText(text: string, chunkSize = 800, overlap = 200): string[
 
 function findSplitPoint(text: string, maxLen: number): number {
   // Try to split at sentence boundary
-  const sentenceEnd = text.lastIndexOf('。', maxLen)
+  const sentenceEnd = text.lastIndexOf('\u3002', maxLen)
   if (sentenceEnd > maxLen * 0.5) return sentenceEnd + 1
 
   const periodEnd = text.lastIndexOf('. ', maxLen)
@@ -100,15 +107,17 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
 
   const auth = getAuthClient()
   const client = await auth.getClient()
-  const accessToken = await client.getAccessToken()
 
   const results: number[][] = []
   const batchSize = 250
 
   for (let i = 0; i < texts.length; i += batchSize) {
+    // Refresh access token for each batch to avoid expiration during long-running jobs
+    const accessToken = await client.getAccessToken()
+
     const batch = texts.slice(i, i + batchSize)
     const instances = batch.map((text) => ({
-      content: text.substring(0, 10000), // API limit per instance
+      content: text.substring(0, 10000),
     }))
 
     const response = await fetch(endpoint, {

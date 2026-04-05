@@ -66,6 +66,8 @@ export interface ContentChunk {
   userId: string
   chunkIndex: number
   text: string
+  // embedding (768-dimensional vector) is stored in Firestore via FieldValue.vector()
+  // but intentionally omitted from the client type as it is server-only data
   createdAt: Timestamp
 }
 
