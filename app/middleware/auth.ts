@@ -1,7 +1,10 @@
-export default defineNuxtRouteMiddleware((to) => {
-  const { currentUser, authLoading } = useAuth()
+export default defineNuxtRouteMiddleware(async (to) => {
+  const { currentUser, authLoading, waitForAuth } = useAuth()
 
-  if (authLoading.value) return
+  // Wait for Firebase Auth to initialize (first onAuthStateChanged callback)
+  if (authLoading.value) {
+    await waitForAuth()
+  }
 
   const publicPages = ['/login', '/signup']
   const isPublicPage = publicPages.includes(to.path)

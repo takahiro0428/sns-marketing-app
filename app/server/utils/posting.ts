@@ -16,43 +16,74 @@ export async function postToNote(
   // Step 1: Login to get session token
   let sessionToken = settings.noteSessionToken as string | undefined
 
-  if (!sessionToken) {
+  const loginToNote = async () => {
     const decryptedPassword = decrypt(credentials.password)
+    try {
+      const loginResponse = await $fetch<{ data: { accessToken: string } }>(`${baseUrl}/v1/sessions/sign_in`, {
+        method: 'POST',
+        body: {
+          login: credentials.email,
+          password: decryptedPassword,
+        },
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+      })
+      return loginResponse.data.accessToken
+    } catch (error: unknown) {
+      const statusCode = (error as { statusCode?: number })?.statusCode
+      if (statusCode === 401 || statusCode === 403) {
+        throw new Error('NOTE_LOGIN_FAILED: メールアドレスまたはパスワードが正しくありません')
+      }
+      throw new Error(`NOTE_LOGIN_ERROR: Noteへのログインに失敗しました (${statusCode || 'ネットワークエラー'})`)
+    }
+  }
 
-    const loginResponse = await $fetch<{ data: { accessToken: string } }>(`${baseUrl}/v1/sessions/sign_in`, {
+  if (!sessionToken) {
+    sessionToken = await loginToNote()
+  }
+
+  // Step 2: Create note post (with session token retry)
+  const postNote = async (token: string) => {
+    return await $fetch<{
+      data: { id: number; key: string; user: { urlname: string } }
+    }>(`${baseUrl}/v3/notes`, {
       method: 'POST',
       body: {
-        login: credentials.email,
-        password: decryptedPassword,
+        name: article.title,
+        body: article.body,
+        status: 'published',
+        free: true,
+        can_reprint: false,
+        tags: (article.tags as string[]) || [],
       },
       headers: {
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
     })
-
-    sessionToken = loginResponse.data.accessToken
   }
 
-  // Step 2: Create note post
-  const postResponse = await $fetch<{
-    data: { id: number; key: string; user: { urlname: string } }
-  }>(`${baseUrl}/v3/notes`, {
-    method: 'POST',
-    body: {
-      name: article.title,
-      body: article.body,
-      status: 'published',
-      free: true,
-      can_reprint: false,
-      tags: (article.tags as string[]) || [],
-    },
-    headers: {
-      'Authorization': `Bearer ${sessionToken}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    },
-  })
+  let postResponse: Awaited<ReturnType<typeof postNote>>
+  try {
+    postResponse = await postNote(sessionToken)
+  } catch (error: unknown) {
+    const statusCode = (error as { statusCode?: number })?.statusCode
+    // If 401, session may have expired — retry with fresh login
+    if (statusCode === 401) {
+      sessionToken = await loginToNote()
+      try {
+        postResponse = await postNote(sessionToken)
+      } catch (retryError: unknown) {
+        const retryStatus = (retryError as { statusCode?: number })?.statusCode
+        throw new Error(`NOTE_POST_FAILED: 記事の投稿に失敗しました (${retryStatus || 'エラー'})`)
+      }
+    } else {
+      throw new Error(`NOTE_POST_FAILED: 記事の投稿に失敗しました (${statusCode || 'ネットワークエラー'})`)
+    }
+  }
 
   const noteData = postResponse.data
   const postUrl = `https://note.com/${noteData.user.urlname}/n/${noteData.key}`

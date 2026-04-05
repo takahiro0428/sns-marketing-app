@@ -1,5 +1,7 @@
 <template>
   <div class="space-y-6">
+    <ProjectWorkflowNav :current-step="3" />
+
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
       <div>
@@ -156,8 +158,9 @@
                 </p>
               </div>
               <div class="flex items-center gap-2 shrink-0 flex-wrap">
-                <!-- Post buttons -->
+                <!-- Post buttons (only for enabled platforms) -->
                 <button
+                  v-if="currentProject?.noteEnabled"
                   class="btn-primary btn-sm"
                   :disabled="posting || !throttleStatus?.canPost || !!currentArticle.notePostId"
                   @click="handlePost('note')"
@@ -166,6 +169,7 @@
                   <span v-else>{{ currentArticle.notePostId ? 'Note投稿済' : 'Noteに投稿' }}</span>
                 </button>
                 <button
+                  v-if="currentProject?.xEnabled"
                   class="btn-primary btn-sm"
                   :disabled="posting || !throttleStatus?.canPost || !!currentArticle.xPostId"
                   @click="handlePost('x')"
@@ -354,8 +358,8 @@
         <div class="relative bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6">
           <h2 class="text-xl font-bold text-gray-900 mb-6">記事を生成</h2>
 
-          <!-- Generating animation -->
-          <div v-if="generatingArticle" class="py-12 text-center">
+          <!-- Generating animation (single or batch) -->
+          <div v-if="generatingArticle || batchGenerating" class="py-12 text-center">
             <div class="relative mx-auto w-16 h-16 mb-6">
               <div class="absolute inset-0 rounded-full border-4 border-indigo-100" />
               <div class="absolute inset-0 rounded-full border-4 border-t-indigo-600 animate-spin" />
@@ -363,8 +367,30 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
             </div>
-            <p class="text-sm font-semibold text-gray-900">AIが記事を生成中...</p>
-            <p class="mt-2 text-xs text-gray-500">チャプターの内容をもとに記事を作成しています</p>
+            <template v-if="batchGenerating">
+              <p class="text-sm font-semibold text-gray-900">一括生成中...</p>
+              <p class="mt-2 text-xs text-gray-500">
+                {{ batchProgress.completed + batchProgress.failed }} / {{ batchProgress.total }} 件処理済み
+              </p>
+              <!-- Progress bar -->
+              <div class="mt-4 mx-auto max-w-xs">
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    class="h-2 rounded-full transition-all duration-300"
+                    :class="batchProgress.failed > 0 ? 'bg-amber-500' : 'bg-indigo-500'"
+                    :style="{ width: `${batchProgress.total > 0 ? ((batchProgress.completed + batchProgress.failed) / batchProgress.total) * 100 : 0}%` }"
+                  />
+                </div>
+                <div class="mt-2 flex justify-between text-xs text-gray-500">
+                  <span class="text-green-600">{{ batchProgress.completed }} 成功</span>
+                  <span v-if="batchProgress.failed > 0" class="text-red-600">{{ batchProgress.failed }} 失敗</span>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <p class="text-sm font-semibold text-gray-900">AIが記事を生成中...</p>
+              <p class="mt-2 text-xs text-gray-500">チャプターの内容をもとに記事を作成しています</p>
+            </template>
             <div class="mt-4 flex justify-center gap-1">
               <span class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:0ms]" />
               <span class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:150ms]" />
@@ -444,15 +470,29 @@
               {{ generateError }}
             </div>
 
-            <div class="flex justify-end gap-3 pt-2">
-              <button type="button" class="btn-secondary" @click="closeGenerateModal">キャンセル</button>
+            <div class="flex flex-col gap-3 pt-2">
+              <!-- Batch generation button -->
               <button
-                type="submit"
-                class="btn-primary"
-                :disabled="!generateForm.planId || !generateForm.chapterId"
+                v-if="generateForm.planId && selectableChapters.length > 1"
+                type="button"
+                class="w-full btn-secondary flex items-center justify-center gap-2"
+                @click="handleBatchGenerate"
               >
-                生成する
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                全{{ selectableChapters.length }}章を一括生成
               </button>
+              <div class="flex justify-end gap-3">
+                <button type="button" class="btn-secondary" @click="closeGenerateModal">キャンセル</button>
+                <button
+                  type="submit"
+                  class="btn-primary"
+                  :disabled="!generateForm.planId || !generateForm.chapterId"
+                >
+                  生成する
+                </button>
+              </div>
             </div>
           </form>
         </div>
@@ -478,14 +518,19 @@ import type { ArticleGenerationRequest, PlanChapter, PostPlatform } from '~/type
 const route = useRoute()
 const projectId = computed(() => route.params.projectId as string)
 
+const { currentProject } = useProjects()
+
 const {
   articles,
   currentArticle,
   articlesLoading,
   generatingArticle,
+  batchGenerating,
+  batchProgress,
   fetchArticles,
   fetchArticle,
   generateArticle,
+  generateArticlesBatch,
   updateArticle,
   updateArticlePostStatus,
   deleteArticle,
@@ -723,6 +768,29 @@ const handleGenerate = async () => {
   }
 }
 
+const handleBatchGenerate = async () => {
+  generateError.value = ''
+  if (!selectedPlan.value || selectableChapters.value.length === 0) return
+
+  try {
+    const errors = await generateArticlesBatch(
+      projectId.value,
+      generateForm.value.planId,
+      selectableChapters.value,
+      generateForm.value.userRequirements || undefined,
+    )
+    const completedCount = batchProgress.value.completed
+    closeGenerateModal()
+    if (errors.length > 0) {
+      successMessage.value = `一括生成完了: ${completedCount}件成功、${errors.length}件失敗`
+    } else {
+      successMessage.value = `${completedCount}件の記事を一括生成しました`
+    }
+  } catch {
+    generateError.value = '一括生成に失敗しました'
+  }
+}
+
 // ==========================================
 // Save article
 // ==========================================
@@ -771,7 +839,9 @@ const handlePost = async (platform: PostPlatform) => {
     await fetchArticles(projectId.value)
     successMessage.value = `${platform === 'note' ? 'Note' : 'X'}への投稿が完了しました`
   } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : '不明なエラー'
+    const fetchErr = e as { data?: { data?: { detail?: string } }; statusCode?: number }
+    const detail = fetchErr?.data?.data?.detail
+    const message = detail || (e instanceof Error ? e.message : '不明なエラー')
     postError.value = `${platform === 'note' ? 'Note' : 'X'}への投稿に失敗しました: ${message}`
   } finally {
     postingPlatform.value = null

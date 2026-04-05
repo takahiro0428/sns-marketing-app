@@ -125,6 +125,17 @@ export function useScheduler() {
     await fetchSchedules(projectId)
   }
 
+  const processSchedules = async (projectId: string): Promise<{ processed: number; results: Array<{ scheduleId: string; status: string; error?: string }> }> => {
+    const { apiFetch } = useApiFetch()
+    const result = await apiFetch('/api/scheduler/process', { method: 'POST', body: { projectId } }) as {
+      processed: number
+      results: Array<{ scheduleId: string; status: string; error?: string }>
+    }
+    // Refresh schedule list after processing
+    await fetchSchedules(projectId)
+    return result
+  }
+
   const cancelAllSchedules = async (projectId: string) => {
     const activeSchedules = schedules.value.filter((s) => s.status === 'active')
     for (const schedule of activeSchedules) {
@@ -141,6 +152,7 @@ export function useScheduler() {
     autoScheduleChapters,
     updateScheduleStatus,
     deleteSchedule,
+    processSchedules,
     cancelAllSchedules,
   }
 }

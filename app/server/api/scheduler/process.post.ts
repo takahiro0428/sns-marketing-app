@@ -6,26 +6,43 @@ import { fetchAndCheckThrottle } from '~/server/utils/anti-ban'
  * This should be triggered by a Cloud Scheduler or cron job
  */
 export default defineEventHandler(async (event) => {
-  const body = await readBody<{ apiKey?: string }>(event)
-
-  // Scheduler API key auth - uses dedicated header
+  // Support two auth modes:
+  // 1. x-scheduler-key header (for Cloud Scheduler / cron)
+  // 2. Firebase Auth token (for user-triggered manual processing)
   const schedulerKey = getHeader(event, 'x-scheduler-key')
   const config = useRuntimeConfig()
   const expectedKey = config.schedulerApiKey
-  if (!expectedKey) {
+  const auth = event.context.auth as { uid: string } | undefined
+
+  let userIdFilter: string | null = null
+
+  if (schedulerKey && expectedKey && schedulerKey === expectedKey) {
+    // Cloud Scheduler auth — process all users' schedules
+    userIdFilter = null
+  } else if (auth?.uid) {
+    // User auth — only process this user's schedules
+    userIdFilter = auth.uid
+  } else if (!expectedKey && !auth) {
     throw createError({ statusCode: 500, statusMessage: 'SCHEDULER_KEY_NOT_CONFIGURED' })
-  }
-  if (schedulerKey !== expectedKey) {
+  } else {
     throw createError({ statusCode: 401, statusMessage: 'UNAUTHORIZED' })
   }
 
   const db = getAdminFirestore()
   const now = new Date()
+  const body = await readBody<{ projectId?: string }>(event).catch(() => ({}))
 
   // Find active schedules that are due
-  const schedulesQuery = await db.collection('scheduleEntries')
+  let q = db.collection('scheduleEntries')
     .where('status', '==', 'active')
     .where('scheduledAt', '<=', now)
+  if (userIdFilter) {
+    q = q.where('userId', '==', userIdFilter)
+  }
+  if (body?.projectId) {
+    q = q.where('projectId', '==', body.projectId)
+  }
+  const schedulesQuery = await q
     .orderBy('scheduledAt', 'asc')
     .limit(10) // Process max 10 at a time
     .get()

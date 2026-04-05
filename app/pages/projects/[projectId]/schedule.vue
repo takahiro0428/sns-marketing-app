@@ -1,11 +1,22 @@
 <template>
   <div class="space-y-6">
+    <ProjectWorkflowNav :current-step="4" />
+
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
       <div>
         <h2 class="text-xl font-bold text-gray-900">スケジュール管理</h2>
         <p class="text-sm text-gray-600">記事の投稿スケジュールを管理</p>
       </div>
       <div class="flex gap-2">
+        <button
+          v-if="activeScheduleCount > 0"
+          class="btn-secondary btn-sm"
+          :disabled="processing"
+          @click="handleProcessNow"
+        >
+          <CommonLoadingSpinner v-if="processing" size="sm" />
+          <span v-else>今すぐ処理</span>
+        </button>
         <button class="btn-secondary btn-sm" @click="showAutoSchedule = true">
           自動スケジュール
         </button>
@@ -15,9 +26,9 @@
       </div>
     </div>
 
-    <!-- Throttle status -->
+    <!-- Throttle status (only enabled platforms) -->
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div class="card">
+      <div v-if="currentProject?.noteEnabled" class="card">
         <div class="flex items-center gap-3 mb-3">
           <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
             <span class="text-sm font-bold text-green-700">N</span>
@@ -42,7 +53,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div v-if="currentProject?.xEnabled" class="card">
         <div class="flex items-center gap-3 mb-3">
           <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
             <span class="text-sm font-bold text-blue-700">X</span>
@@ -149,8 +160,8 @@
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">プラットフォーム</label>
               <select v-model="newSchedule.platform" required class="input-field">
-                <option value="note">Note</option>
-                <option value="x">X (Twitter)</option>
+                <option v-if="currentProject?.noteEnabled" value="note">Note</option>
+                <option v-if="currentProject?.xEnabled" value="x">X (Twitter)</option>
               </select>
             </div>
             <div>
@@ -181,11 +192,11 @@
               <input v-model="autoScheduleStart" type="datetime-local" required class="input-field" />
             </div>
             <div class="grid grid-cols-2 gap-3">
-              <label class="flex items-center gap-2">
+              <label v-if="currentProject?.noteEnabled" class="flex items-center gap-2">
                 <input v-model="autoSchedulePlatforms" value="note" type="checkbox" class="w-4 h-4 text-indigo-600 rounded" />
                 <span class="text-sm">Note</span>
               </label>
-              <label class="flex items-center gap-2">
+              <label v-if="currentProject?.xEnabled" class="flex items-center gap-2">
                 <input v-model="autoSchedulePlatforms" value="x" type="checkbox" class="w-4 h-4 text-indigo-600 rounded" />
                 <span class="text-sm">X</span>
               </label>
@@ -212,7 +223,7 @@
       @confirm="confirmDeleteSchedule"
     />
 
-    <!-- Error banner -->
+    <!-- Notification banners -->
     <Teleport to="body">
       <div
         v-if="errorMessage"
@@ -221,6 +232,19 @@
         <div class="flex items-start gap-3">
           <p class="text-sm text-red-700 flex-1">{{ errorMessage }}</p>
           <button class="text-red-400 hover:text-red-600" @click="errorMessage = ''">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div
+        v-if="successMessage"
+        class="fixed top-4 right-4 z-50 max-w-sm bg-green-50 border border-green-200 rounded-lg p-4 shadow-lg"
+      >
+        <div class="flex items-start gap-3">
+          <p class="text-sm text-green-700 flex-1">{{ successMessage }}</p>
+          <button class="text-green-400 hover:text-green-600" @click="successMessage = ''">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -238,7 +262,7 @@ import type { PostPlatform } from '~/types'
 const route = useRoute()
 const projectId = computed(() => route.params.projectId as string)
 
-const { schedules, schedulesLoading, fetchSchedules, addSchedule, autoScheduleChapters, deleteSchedule } = useScheduler()
+const { schedules, schedulesLoading, fetchSchedules, addSchedule, autoScheduleChapters, deleteSchedule, processSchedules } = useScheduler()
 const { articles, fetchArticles } = useArticles()
 const { currentProject } = useProjects()
 const { apiFetch } = useApiFetch()
@@ -248,11 +272,23 @@ const showAutoSchedule = ref(false)
 const showDeleteConfirm = ref(false)
 const addingSchedule = ref(false)
 const autoScheduling = ref(false)
+const processing = ref(false)
 const errorMessage = ref('')
+const successMessage = ref('')
 const deleteTargetId = ref('')
+
+const activeScheduleCount = computed(() =>
+  schedules.value.filter((s) => s.status === 'active').length,
+)
 
 const noteThrottle = ref<Record<string, unknown> | null>(null)
 const xThrottle = ref<Record<string, unknown> | null>(null)
+
+const defaultPlatform = computed<PostPlatform>(() => {
+  if (currentProject.value?.noteEnabled) return 'note'
+  if (currentProject.value?.xEnabled) return 'x'
+  return 'note'
+})
 
 const newSchedule = ref({
   articleId: '',
@@ -260,8 +296,25 @@ const newSchedule = ref({
   scheduledAt: '',
 })
 
+// Update default platform when project loads
+watch(defaultPlatform, (val) => {
+  if (!newSchedule.value.platform || newSchedule.value.platform !== val) {
+    newSchedule.value.platform = val
+  }
+}, { immediate: true })
+
 const autoScheduleStart = ref('')
-const autoSchedulePlatforms = ref<PostPlatform[]>(['note', 'x'])
+const autoSchedulePlatforms = ref<PostPlatform[]>([])
+
+// Initialize default platforms based on project settings
+watch(() => currentProject.value, (project) => {
+  if (project && autoSchedulePlatforms.value.length === 0) {
+    const defaults: PostPlatform[] = []
+    if (project.noteEnabled) defaults.push('note')
+    if (project.xEnabled) defaults.push('x')
+    autoSchedulePlatforms.value = defaults
+  }
+}, { immediate: true })
 
 const availableArticles = computed(() =>
   articles.value.filter((a) => ['draft', 'review', 'approved'].includes(a.status)),
@@ -279,12 +332,20 @@ const formatTimestamp = (timestamp: Timestamp) => {
 
 const loadThrottleStatus = async () => {
   try {
-    const [noteResult, xResult] = await Promise.all([
-      apiFetch('/api/posts/check-throttle', { method: 'POST', body: { projectId: projectId.value, platform: 'note' } }),
-      apiFetch('/api/posts/check-throttle', { method: 'POST', body: { projectId: projectId.value, platform: 'x' } }),
-    ])
-    noteThrottle.value = noteResult as Record<string, unknown>
-    xThrottle.value = xResult as Record<string, unknown>
+    const promises: Promise<void>[] = []
+    if (currentProject.value?.noteEnabled) {
+      promises.push(
+        apiFetch('/api/posts/check-throttle', { method: 'POST', body: { projectId: projectId.value, platform: 'note' } })
+          .then((r) => { noteThrottle.value = r as Record<string, unknown> }),
+      )
+    }
+    if (currentProject.value?.xEnabled) {
+      promises.push(
+        apiFetch('/api/posts/check-throttle', { method: 'POST', body: { projectId: projectId.value, platform: 'x' } })
+          .then((r) => { xThrottle.value = r as Record<string, unknown> }),
+      )
+    }
+    await Promise.all(promises)
   } catch {
     // Non-blocking
   }
@@ -338,6 +399,32 @@ const handleAutoSchedule = async () => {
     errorMessage.value = '自動スケジュール生成に失敗しました'
   } finally {
     autoScheduling.value = false
+  }
+}
+
+const handleProcessNow = async () => {
+  processing.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+  try {
+    const result = await processSchedules(projectId.value)
+    if (result.processed === 0) {
+      successMessage.value = '処理対象のスケジュールはありません（予定日時がまだ到来していません）'
+    } else {
+      const succeeded = result.results.filter((r) => r.status === 'success').length
+      const failed = result.results.filter((r) => r.status === 'failed').length
+      const throttled = result.results.filter((r) => r.status === 'throttled').length
+      const parts: string[] = []
+      if (succeeded > 0) parts.push(`${succeeded}件成功`)
+      if (failed > 0) parts.push(`${failed}件失敗`)
+      if (throttled > 0) parts.push(`${throttled}件制限中`)
+      successMessage.value = `処理完了: ${parts.join('、')}`
+    }
+    await loadThrottleStatus()
+  } catch {
+    errorMessage.value = 'スケジュールの処理に失敗しました'
+  } finally {
+    processing.value = false
   }
 }
 

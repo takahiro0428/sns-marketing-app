@@ -3,6 +3,8 @@
     <CommonLoadingSpinner v-if="contentsLoading && contents.length === 0" full-page text="コンテンツを読み込み中..." />
 
     <div v-else class="space-y-6">
+      <ProjectWorkflowNav :current-step="1" />
+
       <!-- Page header -->
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
