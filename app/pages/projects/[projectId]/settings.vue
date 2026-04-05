@@ -80,8 +80,8 @@
         </form>
       </div>
 
-      <!-- Note credentials -->
-      <div class="card">
+      <!-- Note credentials (only when Note is enabled) -->
+      <div v-if="projectForm.noteEnabled" class="card">
         <h3 class="text-lg font-semibold text-gray-900 mb-1">Note認証設定</h3>
         <p class="text-xs text-gray-500 mb-4">note.comのログイン情報を設定します。パスワードは暗号化して保存されます。</p>
 
@@ -119,8 +119,8 @@
         </form>
       </div>
 
-      <!-- X credentials -->
-      <div class="card">
+      <!-- X credentials (only when X is enabled) -->
+      <div v-if="projectForm.xEnabled" class="card">
         <h3 class="text-lg font-semibold text-gray-900 mb-1">X (Twitter) API設定</h3>
         <p class="text-xs text-gray-500 mb-4">X Developer Portalで取得したAPI認証情報を設定します。</p>
 

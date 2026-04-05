@@ -68,17 +68,25 @@ export default defineEventHandler(async (event) => {
   } catch (error: unknown) {
     // Create failed post log server-side
     const errMsg = error instanceof Error ? error.message : 'Unknown error'
-    await db.collection('postLogs').add({
-      projectId: body.projectId,
-      userId: auth.uid,
-      articleId: body.articleId,
-      platform: body.platform,
-      status: 'failed',
-      errorMessage: errMsg,
-      retryCount: 0,
-      createdAt: new Date(),
+    try {
+      await db.collection('postLogs').add({
+        projectId: body.projectId,
+        userId: auth.uid,
+        articleId: body.articleId,
+        platform: body.platform,
+        status: 'failed',
+        errorMessage: errMsg,
+        retryCount: 0,
+        createdAt: new Date(),
+      })
+    } catch {
+      // Non-blocking: don't let log failure mask the original error
+    }
+    throw createError({
+      statusCode: 502,
+      statusMessage: 'PLATFORM_POST_FAILED',
+      data: { platform: body.platform, detail: errMsg },
     })
-    throw error
   }
 
   // Create success post log server-side (ensures scheduler posts are also logged)

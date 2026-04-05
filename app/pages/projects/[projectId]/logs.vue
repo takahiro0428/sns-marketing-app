@@ -8,8 +8,8 @@
       <div class="flex gap-2">
         <select v-model="filterPlatform" class="input-field w-auto">
           <option value="">すべて</option>
-          <option value="note">Note</option>
-          <option value="x">X</option>
+          <option v-if="currentProject?.noteEnabled" value="note">Note</option>
+          <option v-if="currentProject?.xEnabled" value="x">X</option>
         </select>
         <select v-model="filterStatus" class="input-field w-auto">
           <option value="">すべて</option>
@@ -109,6 +109,7 @@ import type { Timestamp } from 'firebase/firestore'
 const route = useRoute()
 const projectId = computed(() => route.params.projectId as string)
 
+const { currentProject } = useProjects()
 const { postLogs, postLogsLoading, fetchPostLogs } = usePostLogs()
 
 const filterPlatform = ref('')

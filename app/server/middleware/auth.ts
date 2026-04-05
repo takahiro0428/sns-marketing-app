@@ -12,8 +12,13 @@ export default defineEventHandler(async (event) => {
   // Skip auth for non-API routes
   if (!path.startsWith('/api/')) return
 
-  // Scheduler has its own auth mechanism
-  if (path.startsWith('/api/scheduler/')) return
+  // Scheduler supports both scheduler key and user auth.
+  // If no Authorization header is provided, skip (scheduler key will be checked in handler).
+  if (path.startsWith('/api/scheduler/')) {
+    const authHeader = getHeader(event, 'authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return
+    // If Bearer token present, validate it and attach auth context (fall through)
+  }
 
   // Extract Bearer token
   const authHeader = getHeader(event, 'authorization')

@@ -16,11 +16,18 @@ const userProfile = ref<UserProfile | null>(null)
 const authLoading = ref(true)
 const authInitialized = ref(false)
 
+// Promise that resolves when the first onAuthStateChanged callback fires
+let authReadyResolve: (() => void) | null = null
+const authReady = new Promise<void>((resolve) => {
+  authReadyResolve = resolve
+})
+
 export function useAuth() {
   const { $auth, $firestore } = useNuxtApp()
 
   const initAuth = () => {
     if (authInitialized.value) return
+    authInitialized.value = true
 
     onAuthStateChanged($auth, async (user) => {
       currentUser.value = user
@@ -35,8 +42,23 @@ export function useAuth() {
         userProfile.value = null
       }
       authLoading.value = false
+      // Resolve the authReady promise on the first callback
+      if (authReadyResolve) {
+        authReadyResolve()
+        authReadyResolve = null
+      }
     })
-    authInitialized.value = true
+  }
+
+  const waitForAuth = () => {
+    // Safety timeout: if auth doesn't resolve within 10 seconds, treat as unauthenticated
+    return Promise.race([
+      authReady,
+      new Promise<void>((resolve) => setTimeout(() => {
+        authLoading.value = false
+        resolve()
+      }, 10000)),
+    ])
   }
 
   const loadUserProfile = async (uid: string) => {
@@ -109,6 +131,7 @@ export function useAuth() {
     userProfile: readonly(userProfile),
     authLoading: readonly(authLoading),
     initAuth,
+    waitForAuth,
     signIn,
     signUp,
     signInWithGoogle,

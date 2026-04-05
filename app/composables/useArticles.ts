@@ -12,7 +12,7 @@ import {
   serverTimestamp,
   type DocumentData,
 } from 'firebase/firestore'
-import type { Article, ArticleStatus, ArticleGenerationRequest } from '~/types'
+import type { Article, ArticleStatus, ArticleGenerationRequest, PlanChapter } from '~/types'
 
 export function useArticles() {
   const { $firestore } = useNuxtApp()
@@ -154,6 +154,40 @@ export function useArticles() {
     await fetchArticle(id)
   }
 
+  // Batch generation state
+  const batchGenerating = ref(false)
+  const batchProgress = ref({ total: 0, completed: 0, failed: 0 })
+
+  const generateArticlesBatch = async (
+    projectId: string,
+    planId: string,
+    chapters: PlanChapter[],
+    userRequirements?: string,
+  ): Promise<string[]> => {
+    batchGenerating.value = true
+    batchProgress.value = { total: chapters.length, completed: 0, failed: 0 }
+    const errors: string[] = []
+
+    for (const chapter of chapters) {
+      try {
+        await generateArticle({
+          projectId,
+          planId,
+          chapterId: chapter.id,
+          chapterTitle: chapter.title,
+          chapterSynopsis: chapter.synopsis,
+          userRequirements,
+        })
+        batchProgress.value.completed++
+      } catch (e) {
+        batchProgress.value.failed++
+        errors.push(`${chapter.title}: ${e instanceof Error ? e.message : 'エラー'}`)
+      }
+    }
+    batchGenerating.value = false
+    return errors
+  }
+
   const deleteArticle = async (id: string, projectId: string) => {
     const docRef = doc($firestore, 'articles', id)
     await deleteDoc(docRef)
@@ -168,9 +202,12 @@ export function useArticles() {
     currentArticle: readonly(currentArticle),
     articlesLoading: readonly(articlesLoading),
     generatingArticle: readonly(generatingArticle),
+    batchGenerating: readonly(batchGenerating),
+    batchProgress: readonly(batchProgress),
     fetchArticles,
     fetchArticle,
     generateArticle,
+    generateArticlesBatch,
     updateArticle,
     updateArticlePostStatus,
     deleteArticle,
