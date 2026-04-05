@@ -10,10 +10,11 @@ import {
   where,
   orderBy,
   serverTimestamp,
+  writeBatch,
   type DocumentData,
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
-import type { ContentSource, ContentSourceType } from '~/types'
+import type { ContentSource, ContentSourceType, ProcessingStatus } from '~/types'
 
 export function useContents() {
   const { $firestore, $storage } = useNuxtApp()
@@ -35,6 +36,7 @@ export function useContents() {
     rawText: data.rawText,
     summary: data.summary,
     tags: data.tags || [],
+    processingStatus: data.processingStatus as ProcessingStatus | undefined,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   })
@@ -117,9 +119,13 @@ export function useContents() {
       storageUrl,
       rawText,
       tags,
+      processingStatus: 'pending' as ProcessingStatus,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     })
+
+    // Trigger chunk + embedding processing (non-blocking)
+    triggerProcessing(docRef.id)
 
     await fetchContents(projectId)
     const created = await getContent(docRef.id)
@@ -142,9 +148,13 @@ export function useContents() {
       sourceType: 'text' as ContentSourceType,
       rawText: text,
       tags,
+      processingStatus: 'pending' as ProcessingStatus,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     })
+
+    // Trigger chunk + embedding processing (non-blocking)
+    triggerProcessing(docRef.id)
 
     await fetchContents(projectId)
     const created = await getContent(docRef.id)
@@ -152,9 +162,24 @@ export function useContents() {
     return created
   }
 
+  const triggerProcessing = (contentSourceId: string) => {
+    apiFetch(`/api/content-sources/${contentSourceId}/process`, {
+      method: 'POST',
+    }).catch((err: unknown) => {
+      console.warn('Content processing failed (non-blocking):', err)
+    })
+  }
+
   const updateContent = async (id: string, data: { title?: string; tags?: string[]; rawText?: string }) => {
     const docRef = doc($firestore, 'contentSources', id)
-    await updateDoc(docRef, { ...data, updatedAt: serverTimestamp() })
+    const updateData: Record<string, unknown> = { ...data, updatedAt: serverTimestamp() }
+    if (data.rawText !== undefined) {
+      updateData.processingStatus = 'pending'
+    }
+    await updateDoc(docRef, updateData)
+    if (data.rawText !== undefined) {
+      triggerProcessing(id)
+    }
   }
 
   const deleteContent = async (id: string, projectId: string) => {
@@ -166,6 +191,28 @@ export function useContents() {
       } catch {
         // Storage deletion failure is non-blocking
         console.warn('Failed to delete storage object, continuing')
+      }
+    }
+    // Delete associated chunks (non-blocking, batched in groups of 500)
+    if (currentUser.value) {
+      try {
+        const chunksQuery = query(
+          collection($firestore, 'contentChunks'),
+          where('contentSourceId', '==', id),
+          where('userId', '==', currentUser.value.uid),
+        )
+        const chunksSnap = await getDocs(chunksQuery)
+        const batchSize = 500
+        for (let i = 0; i < chunksSnap.docs.length; i += batchSize) {
+          const batch = writeBatch($firestore)
+          const end = Math.min(i + batchSize, chunksSnap.docs.length)
+          for (let j = i; j < end; j++) {
+            batch.delete(chunksSnap.docs[j].ref)
+          }
+          await batch.commit()
+        }
+      } catch {
+        console.warn('Failed to delete content chunks, continuing')
       }
     }
     const docRef = doc($firestore, 'contentSources', id)

@@ -45,6 +45,7 @@ export function useArticles() {
     notePostedAt: data.notePostedAt,
     xPostedAt: data.xPostedAt,
     generationPrompt: data.generationPrompt,
+    userRequirements: data.userRequirements,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   })
@@ -85,27 +86,28 @@ export function useArticles() {
         body: string
         summary: string
         tags: string[]
-        prompt: string
       }>('/api/articles/generate', {
         method: 'POST',
         body: request,
       })
 
-      const docRef = await addDoc(articlesCol(), {
+      const articleData: Record<string, unknown> = {
         projectId: request.projectId,
         userId: currentUser.value.uid,
         planId: request.planId,
         chapterId: request.chapterId,
-        contentSourceId: request.contentSourceId,
         title: result.title,
         body: result.body,
         summary: result.summary,
         tags: result.tags,
         status: 'draft' as ArticleStatus,
-        generationPrompt: result.prompt,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      })
+      }
+      if (request.userRequirements) {
+        articleData.userRequirements = request.userRequirements
+      }
+      const docRef = await addDoc(articlesCol(), articleData)
 
       const article = await fetchArticle(docRef.id)
       if (!article) throw new Error('ARTICLE_CREATE_FAILED')

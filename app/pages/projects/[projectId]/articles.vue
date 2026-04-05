@@ -426,6 +426,20 @@
               <p v-else class="text-xs text-gray-500">先に配信計画を選択してください</p>
             </div>
 
+            <!-- User requirements -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">要求・指示（任意）</label>
+              <textarea
+                v-model="generateForm.userRequirements"
+                rows="3"
+                class="input-field"
+                placeholder="例: 具体的な事例を多く含めて、初心者にもわかりやすく書いてください"
+              />
+              <p class="mt-1 text-xs text-gray-500">
+                未指定の場合、AIがチャプターの内容とプロジェクト内のコンテンツをもとに自動判断します
+              </p>
+            </div>
+
             <div v-if="generateError" class="p-3 rounded-lg bg-red-50 text-sm text-red-700">
               {{ generateError }}
             </div>
@@ -513,6 +527,7 @@ const newTagInput = ref('')
 const generateForm = ref({
   planId: '',
   chapterId: '',
+  userRequirements: '',
 })
 
 const editForm = ref({
@@ -662,14 +677,14 @@ const selectArticle = async (articleId: string) => {
 
 const openGenerateModal = () => {
   showGenerateModal.value = true
-  generateForm.value = { planId: '', chapterId: '' }
+  generateForm.value = { planId: '', chapterId: '', userRequirements: '' }
   generateError.value = ''
 }
 
 const closeGenerateModal = () => {
   if (generatingArticle.value) return
   showGenerateModal.value = false
-  generateForm.value = { planId: '', chapterId: '' }
+  generateForm.value = { planId: '', chapterId: '', userRequirements: '' }
   generateError.value = ''
 }
 
@@ -693,9 +708,9 @@ const handleGenerate = async () => {
     projectId: projectId.value,
     planId: generateForm.value.planId,
     chapterId: generateForm.value.chapterId,
-    contentSourceId: selectedPlan.value.contentSourceId,
     chapterTitle: selectedChapter.title,
     chapterSynopsis: selectedChapter.synopsis,
+    userRequirements: generateForm.value.userRequirements || undefined,
   }
 
   try {

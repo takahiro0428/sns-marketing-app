@@ -250,28 +250,44 @@
 
           <!-- Form -->
           <form v-else @submit.prevent="handleGenerate" class="space-y-5">
+            <!-- Content sources info -->
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">コンテンツソース *</label>
               <CommonLoadingSpinner v-if="contentsLoading" size="sm" text="コンテンツを読み込み中..." />
               <template v-else>
-                <select
-                  v-model="generateForm.contentSourceId"
-                  required
-                  class="input-field"
-                >
-                  <option value="" disabled>選択してください</option>
-                  <option
-                    v-for="content in contents"
-                    :key="content.id"
-                    :value="content.id"
-                  >
-                    {{ content.title }}（{{ sourceTypeLabel(content.sourceType) }}）
-                  </option>
-                </select>
-                <p v-if="contents.length === 0" class="mt-1 text-xs text-amber-600">
-                  コンテンツソースがありません。先にコンテンツをアップロードしてください。
-                </p>
+                <div v-if="contents.length > 0" class="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <p class="text-xs font-medium text-gray-700">
+                    プロジェクト内のコンテンツソース（{{ contents.length }}件）を自動的に参照します
+                  </p>
+                  <ul class="mt-2 space-y-1">
+                    <li
+                      v-for="content in contents"
+                      :key="content.id"
+                      class="text-xs text-gray-600 flex items-center gap-1.5"
+                    >
+                      <span class="w-1.5 h-1.5 bg-indigo-400 rounded-full shrink-0" />
+                      {{ content.title }}（{{ sourceTypeLabel(content.sourceType) }}）
+                    </li>
+                  </ul>
+                </div>
+                <div v-else class="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                  <p class="text-xs text-amber-700">
+                    コンテンツソースがありません。先にコンテンツをアップロードしてください。
+                  </p>
+                </div>
               </template>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">要求・指示（任意）</label>
+              <textarea
+                v-model="generateForm.userRequirements"
+                rows="4"
+                class="input-field"
+                placeholder="例: 初心者向けにSNSマーケティングの基礎を5回連載で解説してください"
+              />
+              <p class="mt-1 text-xs text-gray-500">
+                未指定の場合、AIがアップロード済みコンテンツをもとに最適な計画を自動判断します
+              </p>
             </div>
 
             <div>
@@ -296,7 +312,7 @@
               <button
                 type="submit"
                 class="btn-primary"
-                :disabled="!generateForm.contentSourceId || contents.length === 0"
+                :disabled="contents.length === 0"
               >
                 生成する
               </button>
@@ -374,7 +390,7 @@ const generateError = ref('')
 const operationError = ref('')
 
 const generateForm = ref({
-  contentSourceId: '',
+  userRequirements: '',
   suggestedChapters: undefined as number | undefined,
 })
 
@@ -420,7 +436,7 @@ const handleGenerate = async () => {
   try {
     const result = await generatePlan(
       projectId.value,
-      generateForm.value.contentSourceId,
+      generateForm.value.userRequirements || undefined,
       generateForm.value.suggestedChapters || undefined,
     )
     closeGenerateModal()
@@ -434,7 +450,7 @@ const handleGenerate = async () => {
 const closeGenerateModal = () => {
   if (generating.value) return
   showGenerateModal.value = false
-  generateForm.value = { contentSourceId: '', suggestedChapters: undefined }
+  generateForm.value = { userRequirements: '', suggestedChapters: undefined }
   generateError.value = ''
 }
 

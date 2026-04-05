@@ -1,16 +1,17 @@
 import { generateContent } from '~/server/utils/vertex-ai'
 import { getAdminFirestore } from '~/server/utils/firebase-admin'
+import { retrieveRelevantContent } from '~/server/utils/content-retrieval'
 
 interface GenerateRequest {
   projectId: string
-  contentSourceId: string
+  userRequirements?: string
   suggestedChapters?: number
 }
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<GenerateRequest>(event)
 
-  if (!body.projectId || !body.contentSourceId) {
+  if (!body.projectId) {
     throw createError({ statusCode: 400, statusMessage: 'MISSING_REQUIRED_FIELDS' })
   }
 
@@ -21,21 +22,32 @@ export default defineEventHandler(async (event) => {
 
   const db = getAdminFirestore()
 
-  // Fetch content source
-  const contentDoc = await db.collection('contentSources').doc(body.contentSourceId).get()
-  if (!contentDoc.exists) {
-    throw createError({ statusCode: 404, statusMessage: 'CONTENT_SOURCE_NOT_FOUND' })
-  }
-
-  const content = contentDoc.data()!
-
-  // Verify content source ownership
-  if (content.userId !== auth.uid) {
+  // Verify project ownership
+  const projectDoc = await db.collection('projects').doc(body.projectId).get()
+  if (!projectDoc.exists || projectDoc.data()!.userId !== auth.uid) {
     throw createError({ statusCode: 403, statusMessage: 'FORBIDDEN' })
   }
-  const rawText = content.rawText || ''
 
-  if (!rawText.trim()) {
+  // Verify project has content sources
+  const contentSnap = await db.collection('contentSources')
+    .where('projectId', '==', body.projectId)
+    .where('userId', '==', auth.uid)
+    .limit(1)
+    .get()
+
+  if (contentSnap.empty) {
+    throw createError({ statusCode: 400, statusMessage: 'NO_CONTENT_SOURCES' })
+  }
+
+  // Retrieve relevant content from all project documents via RAG
+  const contentText = await retrieveRelevantContent(
+    body.projectId,
+    auth.uid,
+    body.userRequirements,
+    30000,
+  )
+
+  if (!contentText.trim()) {
     throw createError({ statusCode: 400, statusMessage: 'CONTENT_SOURCE_EMPTY' })
   }
 
@@ -43,8 +55,12 @@ export default defineEventHandler(async (event) => {
     ? `ユーザーは約${body.suggestedChapters}章を希望しています。`
     : '最適な章数を提案してください（3〜15章程度）。'
 
+  const userRequirementsBlock = body.userRequirements
+    ? `\n=== ユーザーからの要求 ===\n${body.userRequirements}\n=== 要求ここまで ===\n\n上記の要求を踏まえて計画を作成してください。`
+    : ''
+
   const systemInstruction = `あなたはSNSマーケティングの配信計画を立てるプロフェッショナルです。
-提供されたコンテンツを分析し、noteとXでの連載投稿に最適な配信計画を提案してください。
+提供された複数のソースドキュメントを統合的に分析し、noteとXでの連載投稿に最適な配信計画を提案してください。
 
 以下のルールに従ってください：
 - 各章は独立して読んでも価値がある内容にする
@@ -52,6 +68,7 @@ export default defineEventHandler(async (event) => {
 - 読者の関心を引き続けるストーリー構成にする
 - noteの記事として適切な文量（1章あたり1500-3000文字目安）になるよう分割する
 - 最初の章は特に引きの強い内容にする
+- 複数のソースがある場合は、それらを横断的に活用し統合的な計画にする
 
 回答は必ず以下のJSON形式で返してください（他の文字は含めないでください）：
 {
@@ -69,9 +86,10 @@ export default defineEventHandler(async (event) => {
   const prompt = `以下のコンテンツを分析し、SNS連載投稿の配信計画を作成してください。
 
 ${chapterHint}
+${userRequirementsBlock}
 
 === コンテンツ ===
-${rawText.substring(0, 30000)}
+${contentText}
 === コンテンツここまで ===`
 
   const response = await generateContent(prompt, systemInstruction)
@@ -91,12 +109,15 @@ ${rawText.substring(0, 30000)}
     })
   }
 
+  // Cap chapters at 100 to stay within Firestore batch write limits
+  const chapters = Array.isArray(parsed.chapters) ? parsed.chapters.slice(0, 100) : []
+
   return {
     plan: {
       title: parsed.title,
-      totalChapters: parsed.totalChapters,
+      totalChapters: chapters.length,
       aiRationale: parsed.aiRationale,
     },
-    chapters: parsed.chapters,
+    chapters,
   }
 })
