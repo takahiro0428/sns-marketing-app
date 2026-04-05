@@ -25,7 +25,12 @@ export function useAuth() {
     onAuthStateChanged($auth, async (user) => {
       currentUser.value = user
       if (user) {
-        await loadUserProfile(user.uid)
+        try {
+          await loadUserProfile(user.uid)
+        } catch (e) {
+          console.warn('[useAuth] Failed to load user profile:', e)
+          userProfile.value = null
+        }
       } else {
         userProfile.value = null
       }
@@ -39,6 +44,8 @@ export function useAuth() {
     const docSnap = await getDoc(docRef)
     if (docSnap.exists()) {
       userProfile.value = { uid, ...docSnap.data() } as UserProfile
+    } else {
+      userProfile.value = null
     }
   }
 
@@ -63,17 +70,25 @@ export function useAuth() {
   const signUp = async (email: string, password: string, displayName: string) => {
     const credential = await createUserWithEmailAndPassword($auth, email, password)
     await updateProfile(credential.user, { displayName })
-    await createUserProfile(credential.user)
+    try {
+      await createUserProfile(credential.user)
+    } catch (e) {
+      console.warn('[useAuth] Profile creation failed after sign-up:', e)
+    }
     return credential.user
   }
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider()
     const credential = await signInWithPopup($auth, provider)
-    const docRef = doc($firestore, 'users', credential.user.uid)
-    const docSnap = await getDoc(docRef)
-    if (!docSnap.exists()) {
-      await createUserProfile(credential.user)
+    try {
+      const docRef = doc($firestore, 'users', credential.user.uid)
+      const docSnap = await getDoc(docRef)
+      if (!docSnap.exists()) {
+        await createUserProfile(credential.user)
+      }
+    } catch (e) {
+      console.warn('[useAuth] Profile check/creation failed after Google sign-in:', e)
     }
     return credential.user
   }
