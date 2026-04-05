@@ -6,11 +6,13 @@
     "rewrites": [
       {
         "source": "/api/**",
-        "function": "server"
+        "function": "server",
+        "region": "asia-northeast1"
       },
       {
         "source": "**",
-        "function": "server"
+        "function": "server",
+        "region": "asia-northeast1"
       }
     ],
     "headers": [
