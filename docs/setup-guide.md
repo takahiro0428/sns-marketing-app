@@ -212,7 +212,7 @@
 
 ### 7.3 リージョンの確認
 
-- デフォルトでは `us-central1` を使用します
+- デフォルトでは `asia-northeast1` を使用します
 - 別のリージョンを使用する場合は、後述の GitHub Secrets で `VERTEX_AI_LOCATION` を設定してください
 
 ---
@@ -304,8 +304,8 @@
 | `FIREBASE_ADMIN_PRIVATE_KEY` | サービスアカウントJSONから自動取得 | サーバーサイド認証用 |
 | `FIRESTORE_DATABASE_ID` | `(default)` | Firestoreデータベース ID。デフォルトデータベースを使う場合は設定不要。名前付きデータベースを使用する場合にそのIDを指定（例: `my-database`） |
 | `VERTEX_AI_PROJECT_ID` | `FIREBASE_PROJECT_ID` と同じ | 別のGCPプロジェクトでVertex AIを使う場合 |
-| `VERTEX_AI_LOCATION` | `us-central1` | Vertex AIのリージョン |
-| `VERTEX_AI_MODEL` | `gemini-2.0-flash` | Vertex AIで使用するモデル名。利用可能なモデル: `gemini-2.0-flash`（推奨・高速）、`gemini-2.0-flash-lite`（低コスト）、`gemini-1.5-pro`（高品質） |
+| `VERTEX_AI_LOCATION` | `asia-northeast1` | Vertex AIのリージョン |
+| `VERTEX_AI_MODEL` | `gemini-2.5-flash` | Vertex AIで使用するモデル名。利用可能なモデル: `gemini-2.5-flash`（推奨・高速）、`gemini-2.0-flash-lite`（低コスト）、`gemini-1.5-pro`（高品質） |
 | `SCHEDULER_API_KEY` | なし（要設定） | Cloud Schedulerからの自動投稿APIキー。任意のランダム文字列を生成して設定（例: `openssl rand -hex 32` で生成） |
 
 > **重要**:
@@ -505,10 +505,10 @@
 - サービスアカウントに「Vertex AI ユーザー」ロールがあるか確認
 - プロジェクトの課金が有効か確認
 - `VERTEX_AI_MODEL` に指定したモデルがリージョンで利用可能か確認
-- `VERTEX_AI_LOCATION` のリージョンが正しいか確認（デフォルト: `us-central1`）
+- `VERTEX_AI_LOCATION` のリージョンが正しいか確認（デフォルト: `asia-northeast1`）
 
 **Q: 「Model not found」エラーが出る**
-- `VERTEX_AI_MODEL` の値を確認（デフォルト: `gemini-2.0-flash`）
+- `VERTEX_AI_MODEL` の値を確認（デフォルト: `gemini-2.5-flash`）
 - 利用可能なモデル名は Google Cloud Console の「Vertex AI > Model Garden」で確認できます
 - リージョンによって利用可能なモデルが異なります
 
@@ -534,8 +534,8 @@
 | Firebase App ID | Firebase Console > プロジェクト設定 | 2.3 | 必須 |
 | Service Account JSON | Google Cloud Console > サービスアカウント | 8.3 | 必須 |
 | Firestore Database ID | Firebase Console > Firestore | 4.2 | デフォルト: `(default)` |
-| Vertex AI Model | 任意に選択 | 7.3 | デフォルト: `gemini-2.0-flash` |
-| Vertex AI Location | 任意に選択 | 7.3 | デフォルト: `us-central1` |
+| Vertex AI Model | 任意に選択 | 7.3 | デフォルト: `gemini-2.5-flash` |
+| Vertex AI Location | 任意に選択 | 7.3 | デフォルト: `asia-northeast1` |
 | Scheduler API Key | `openssl rand -hex 32` で生成 | 12.2 | 自動投稿使用時に必須 |
 | X API Key | X Developer Portal | 10.3 | アプリ内で設定可 |
 | X API Secret | X Developer Portal | 10.3 | アプリ内で設定可 |

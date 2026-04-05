@@ -6,7 +6,7 @@ export function getVertexAI(): VertexAI {
   if (!vertexAI) {
     const config = useRuntimeConfig()
     const projectId = config.vertexAiProjectId || config.firebaseAdminProjectId || config.public.firebaseProjectId
-    const location = config.vertexAiLocation || 'us-central1'
+    const location = config.vertexAiLocation || 'asia-northeast1'
 
     vertexAI = new VertexAI({
       project: projectId,
@@ -18,7 +18,7 @@ export function getVertexAI(): VertexAI {
 
 export function getVertexAiModelName(): string {
   const config = useRuntimeConfig()
-  return config.vertexAiModel || 'gemini-2.0-flash'
+  return config.vertexAiModel || 'gemini-2.5-flash'
 }
 
 export async function generateContent(prompt: string, systemInstruction?: string): Promise<string> {

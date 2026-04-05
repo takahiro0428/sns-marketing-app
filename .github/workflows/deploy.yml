@@ -43,7 +43,7 @@ jobs:
           FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
           FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
           FIRESTORE_DATABASE_ID: ${{ secrets.FIRESTORE_DATABASE_ID || '(default)' }}
-          VERTEX_AI_MODEL: ${{ secrets.VERTEX_AI_MODEL || 'gemini-2.0-flash' }}
+          VERTEX_AI_MODEL: ${{ secrets.VERTEX_AI_MODEL || 'gemini-2.5-flash' }}
           VERTEX_AI_LOCATION: ${{ secrets.VERTEX_AI_LOCATION || 'asia-northeast1' }}
 
       - name: Install Cloud Functions dependencies
