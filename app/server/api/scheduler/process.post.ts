@@ -40,6 +40,13 @@ export default defineEventHandler(async (event) => {
     const schedule = scheduleDoc.data()
 
     try {
+      // Skip entries without userId (data integrity guard)
+      if (!schedule.userId) {
+        await scheduleDoc.ref.update({ status: 'paused' })
+        results.push({ scheduleId: scheduleDoc.id, status: 'failed', error: 'Missing userId' })
+        continue
+      }
+
       // Check throttle before posting
       const throttleResult = await fetchAndCheckThrottle(db, schedule.projectId, schedule.platform)
 
@@ -55,16 +62,17 @@ export default defineEventHandler(async (event) => {
       // Directly post to platform (avoid internal HTTP call)
       const articleDoc = await db.collection('articles').doc(schedule.articleId).get()
       if (!articleDoc.exists) {
+        await scheduleDoc.ref.update({ status: 'paused' })
         results.push({ scheduleId: scheduleDoc.id, status: 'failed', error: 'Article not found' })
         continue
       }
 
-      const settingsQuery = await db.collection('platformSettings')
-        .where('projectId', '==', schedule.projectId)
-        .limit(1)
-        .get()
+      // Fetch platform settings using composite ID (consistent with client-side)
+      const settingsDoc = await db.collection('platformSettings')
+        .doc(`${schedule.userId}_${schedule.projectId}`).get()
 
-      if (settingsQuery.empty) {
+      if (!settingsDoc.exists) {
+        await scheduleDoc.ref.update({ status: 'paused' })
         results.push({ scheduleId: scheduleDoc.id, status: 'failed', error: 'Platform settings not found' })
         continue
       }
@@ -72,7 +80,7 @@ export default defineEventHandler(async (event) => {
       // Import and call the publish functions directly
       const { postToNote, postToX } = await import('~/server/utils/posting')
       const article = articleDoc.data()!
-      const platformSettings = settingsQuery.docs[0].data()
+      const platformSettings = settingsDoc.data()!
 
       let postResult
       if (schedule.platform === 'note') {
@@ -84,7 +92,7 @@ export default defineEventHandler(async (event) => {
       // Log success
       await db.collection('postLogs').add({
         projectId: schedule.projectId,
-        userId: schedule.userId || '',
+        userId: schedule.userId,
         articleId: schedule.articleId,
         platform: schedule.platform,
         status: 'success',
@@ -95,11 +103,32 @@ export default defineEventHandler(async (event) => {
         createdAt: new Date(),
       })
 
+      // Update article post status
+      const articleUpdateData: Record<string, unknown> = { updatedAt: new Date() }
+      if (schedule.platform === 'note') {
+        articleUpdateData.notePostId = postResult.postId
+        articleUpdateData.notePostUrl = postResult.postUrl
+        articleUpdateData.notePostedAt = new Date()
+        articleUpdateData.status = article.xPostId ? 'posted_all' : 'posted_note'
+      } else {
+        articleUpdateData.xPostId = postResult.postId
+        articleUpdateData.xPostUrl = postResult.postUrl
+        articleUpdateData.xPostedAt = new Date()
+        articleUpdateData.status = article.notePostId ? 'posted_all' : 'posted_x'
+      }
+      await db.collection('articles').doc(schedule.articleId).update(articleUpdateData)
+
       // Mark schedule as completed
       await scheduleDoc.ref.update({ status: 'completed' })
       results.push({ scheduleId: scheduleDoc.id, status: 'success' })
     } catch (error: unknown) {
       const errMsg = error instanceof Error ? error.message : 'Unknown error'
+      // Mark permanently failing entries as paused to prevent infinite retry
+      try {
+        await scheduleDoc.ref.update({ status: 'paused' })
+      } catch {
+        // Non-blocking: if status update fails, entry will be retried next cycle
+      }
       results.push({ scheduleId: scheduleDoc.id, status: 'failed', error: errMsg })
     }
   }

@@ -17,6 +17,9 @@ export default defineEventHandler(async (event) => {
 
   const db = getAdminFirestore()
   const auth = event.context.auth as { uid: string } | undefined
+  if (!auth) {
+    throw createError({ statusCode: 401, statusMessage: 'AUTH_REQUIRED' })
+  }
 
   // Fetch article
   const articleDoc = await db.collection('articles').doc(body.articleId).get()
@@ -25,16 +28,18 @@ export default defineEventHandler(async (event) => {
   }
   const article = articleDoc.data()!
 
-  // Fetch platform settings
-  const settingsQuery = await db.collection('platformSettings')
-    .where('projectId', '==', body.projectId)
-    .limit(1)
-    .get()
+  // Verify article ownership
+  if (article.userId !== auth.uid) {
+    throw createError({ statusCode: 403, statusMessage: 'FORBIDDEN' })
+  }
 
-  if (settingsQuery.empty) {
+  // Fetch platform settings using composite ID (consistent with client-side)
+  const settingsDoc = await db.collection('platformSettings').doc(`${auth.uid}_${body.projectId}`).get()
+
+  if (!settingsDoc.exists) {
     throw createError({ statusCode: 400, statusMessage: 'PLATFORM_SETTINGS_NOT_CONFIGURED' })
   }
-  const settings = settingsQuery.docs[0].data()
+  const settings = settingsDoc.data()!
 
   // Check throttle / anti-BAN
   const throttleResult = await fetchAndCheckThrottle(db, body.projectId, body.platform)
@@ -65,7 +70,7 @@ export default defineEventHandler(async (event) => {
     const errMsg = error instanceof Error ? error.message : 'Unknown error'
     await db.collection('postLogs').add({
       projectId: body.projectId,
-      userId: auth?.uid || article.userId || '',
+      userId: auth.uid,
       articleId: body.articleId,
       platform: body.platform,
       status: 'failed',
@@ -79,7 +84,7 @@ export default defineEventHandler(async (event) => {
   // Create success post log server-side (ensures scheduler posts are also logged)
   await db.collection('postLogs').add({
     projectId: body.projectId,
-    userId: auth?.uid || article.userId || '',
+    userId: auth.uid,
     articleId: body.articleId,
     platform: body.platform,
     status: 'success',
@@ -89,6 +94,21 @@ export default defineEventHandler(async (event) => {
     postedAt: new Date(),
     createdAt: new Date(),
   })
+
+  // Update article post status
+  const articleUpdateData: Record<string, unknown> = { updatedAt: new Date() }
+  if (body.platform === 'note') {
+    articleUpdateData.notePostId = postResult.postId
+    articleUpdateData.notePostUrl = postResult.postUrl
+    articleUpdateData.notePostedAt = new Date()
+    articleUpdateData.status = article.xPostId ? 'posted_all' : 'posted_note'
+  } else {
+    articleUpdateData.xPostId = postResult.postId
+    articleUpdateData.xPostUrl = postResult.postUrl
+    articleUpdateData.xPostedAt = new Date()
+    articleUpdateData.status = article.notePostId ? 'posted_all' : 'posted_x'
+  }
+  await db.collection('articles').doc(body.articleId).update(articleUpdateData)
 
   return postResult
 })
