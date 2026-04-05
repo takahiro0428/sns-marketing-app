@@ -5,7 +5,6 @@
  */
 export function useApiFetch() {
   const { $auth } = useNuxtApp()
-  const router = useRouter()
 
   const apiFetch = async <T>(url: string, options: Record<string, unknown> = {}): Promise<T> => {
     const user = $auth.currentUser

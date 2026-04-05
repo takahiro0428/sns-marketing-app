@@ -8,17 +8,19 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'MISSING_PROJECT_ID' })
   }
 
-  const db = getAdminFirestore()
-  const settingsQuery = await db.collection('platformSettings')
-    .where('projectId', '==', body.projectId)
-    .limit(1)
-    .get()
+  const auth = event.context.auth as { uid: string } | undefined
+  if (!auth) {
+    throw createError({ statusCode: 401, statusMessage: 'AUTH_REQUIRED' })
+  }
 
-  if (settingsQuery.empty) {
+  const db = getAdminFirestore()
+  const settingsDoc = await db.collection('platformSettings').doc(`${auth.uid}_${body.projectId}`).get()
+
+  if (!settingsDoc.exists) {
     return { success: false, error: 'Settings not found' }
   }
 
-  const settings = settingsQuery.docs[0].data()
+  const settings = settingsDoc.data()!
   const credentials = settings.noteCredentials
 
   if (!credentials?.email || !credentials?.password) {
@@ -44,7 +46,7 @@ export default defineEventHandler(async (event) => {
 
     // Save session token
     if (response.data?.accessToken) {
-      const settingsRef = settingsQuery.docs[0].ref
+      const settingsRef = settingsDoc.ref
       await settingsRef.update({
         noteSessionToken: response.data.accessToken,
         updatedAt: new Date(),

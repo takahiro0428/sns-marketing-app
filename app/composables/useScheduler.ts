@@ -26,6 +26,7 @@ export function useScheduler() {
   const mapDoc = (data: DocumentData, id: string): ScheduleEntry => ({
     id,
     projectId: data.projectId,
+    userId: data.userId,
     articleId: data.articleId,
     platform: data.platform,
     scheduledAt: data.scheduledAt,

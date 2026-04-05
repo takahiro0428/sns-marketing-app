@@ -46,6 +46,7 @@ export function usePlans() {
     id,
     planId: data.planId,
     projectId: data.projectId,
+    userId: data.userId,
     chapterNumber: data.chapterNumber,
     title: data.title,
     synopsis: data.synopsis,
@@ -180,8 +181,9 @@ export function usePlans() {
   }
 
   const deletePlan = async (planId: string, projectId: string) => {
+    if (!currentUser.value) throw new Error('AUTH_REQUIRED')
     // Delete chapters first
-    const chapSnap = await getDocs(query(chaptersCol(), where('planId', '==', planId)))
+    const chapSnap = await getDocs(query(chaptersCol(), where('planId', '==', planId), where('userId', '==', currentUser.value.uid)))
     const batch = writeBatch($firestore)
     chapSnap.docs.forEach((d) => batch.delete(d.ref))
     batch.delete(doc($firestore, 'distributionPlans', planId))

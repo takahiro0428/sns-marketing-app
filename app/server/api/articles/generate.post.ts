@@ -19,6 +19,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'MISSING_REQUIRED_FIELDS' })
   }
 
+  const auth = event.context.auth as { uid: string } | undefined
+  if (!auth) {
+    throw createError({ statusCode: 401, statusMessage: 'AUTH_REQUIRED' })
+  }
+
   const db = getAdminFirestore()
 
   // Fetch content source
@@ -28,6 +33,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const content = contentDoc.data()!
+
+  // Verify content source ownership
+  if (content.userId !== auth.uid) {
+    throw createError({ statusCode: 403, statusMessage: 'FORBIDDEN' })
+  }
   const rawText = content.rawText || ''
 
   // Fetch other chapters in the plan for context
@@ -35,6 +45,7 @@ export default defineEventHandler(async (event) => {
   if (body.planId) {
     const chaptersSnap = await db.collection('planChapters')
       .where('planId', '==', body.planId)
+      .where('userId', '==', auth.uid)
       .orderBy('chapterNumber', 'asc')
       .get()
     otherChapters = chaptersSnap.docs.map((d) => {

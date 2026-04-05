@@ -82,6 +82,7 @@ export interface PlanChapter {
   id: string
   planId: string
   projectId: string
+  userId: string
   chapterNumber: number
   title: string
   synopsis: string
@@ -182,6 +183,7 @@ export type ScheduleStatus = 'active' | 'paused' | 'completed'
 export interface ScheduleEntry {
   id: string
   projectId: string
+  userId: string
   articleId: string
   platform: PostPlatform
   scheduledAt: Timestamp
