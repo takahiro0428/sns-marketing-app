@@ -62,7 +62,7 @@ export default defineEventHandler(async (event) => {
   let postResult: { postId: string; postUrl: string }
   try {
     if (body.platform === 'note') {
-      postResult = await postToNote(article, settings)
+      postResult = await postToNote(article, settings, `platformSettings/${auth.uid}_${body.projectId}`)
     } else {
       postResult = await postToX(article, settings)
     }
