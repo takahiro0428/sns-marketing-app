@@ -532,7 +532,6 @@ const {
   generateArticle,
   generateArticlesBatch,
   updateArticle,
-  updateArticlePostStatus,
   deleteArticle,
 } = useArticles()
 
@@ -826,17 +825,13 @@ const handlePost = async (platform: PostPlatform) => {
     return
   }
 
+  const articleId = currentArticle.value.id
   postingPlatform.value = platform
   postError.value = ''
   try {
-    const result = await postArticle(currentArticle.value.id, projectId.value, platform)
-    await updateArticlePostStatus(
-      currentArticle.value.id,
-      platform,
-      result.externalPostId || '',
-      result.externalPostUrl || '',
-    )
+    await postArticle(articleId, projectId.value, platform)
     await fetchArticles(projectId.value)
+    await fetchArticle(articleId)
     successMessage.value = `${platform === 'note' ? 'Note' : 'X'}への投稿が完了しました`
   } catch (e: unknown) {
     const fetchErr = e as { data?: { data?: { detail?: string } }; statusCode?: number }

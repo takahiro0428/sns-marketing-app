@@ -1,9 +1,11 @@
 import { decrypt } from '~/server/utils/encryption'
+import { getAdminFirestore } from '~/server/utils/firebase-admin'
 import { createHmac, randomBytes } from 'crypto'
 
 export async function postToNote(
   article: Record<string, unknown>,
   settings: Record<string, unknown>,
+  settingsDocPath?: string,
 ): Promise<{ postId: string; postUrl: string }> {
   const credentials = settings.noteCredentials as Record<string, string> | undefined
   if (!credentials?.email) {
@@ -16,10 +18,23 @@ export async function postToNote(
   // Step 1: Login to get session token
   let sessionToken = settings.noteSessionToken as string | undefined
 
+  const saveSessionToken = async (token: string) => {
+    if (!settingsDocPath) return
+    try {
+      const db = getAdminFirestore()
+      await db.doc(settingsDocPath).update({
+        noteSessionToken: token,
+        updatedAt: new Date(),
+      })
+    } catch {
+      // Non-blocking: token save failure should not stop the post
+    }
+  }
+
   const loginToNote = async () => {
     const decryptedPassword = decrypt(credentials.password)
     try {
-      const loginResponse = await $fetch<{ data: { accessToken: string } }>(`${baseUrl}/v1/sessions/sign_in`, {
+      const loginResponse = await $fetch<{ data: { accessToken?: string; access_token?: string } }>(`${baseUrl}/v1/sessions/sign_in`, {
         method: 'POST',
         body: {
           login: credentials.email,
@@ -30,8 +45,15 @@ export async function postToNote(
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },
       })
-      return loginResponse.data.accessToken
+      const token = loginResponse.data.accessToken || loginResponse.data.access_token
+      if (!token) {
+        throw new Error('NOTE_LOGIN_ERROR: セッショントークンを取得できませんでした')
+      }
+      return token
     } catch (error: unknown) {
+      if (error instanceof Error && error.message.startsWith('NOTE_')) {
+        throw error
+      }
       const statusCode = (error as { statusCode?: number })?.statusCode
       if (statusCode === 401 || statusCode === 403) {
         throw new Error('NOTE_LOGIN_FAILED: メールアドレスまたはパスワードが正しくありません')
@@ -42,6 +64,7 @@ export async function postToNote(
 
   if (!sessionToken) {
     sessionToken = await loginToNote()
+    await saveSessionToken(sessionToken)
   }
 
   // Step 2: Create note post (with session token retry)
@@ -74,6 +97,7 @@ export async function postToNote(
     // If 401, session may have expired — retry with fresh login
     if (statusCode === 401) {
       sessionToken = await loginToNote()
+      await saveSessionToken(sessionToken)
       try {
         postResponse = await postNote(sessionToken)
       } catch (retryError: unknown) {

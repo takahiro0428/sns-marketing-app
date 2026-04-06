@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
     const baseUrl = config.noteApiEndpoint || 'https://note.com/api'
     const decryptedPassword = decrypt(credentials.password)
 
-    const response = await $fetch<{ data: { accessToken: string } }>(`${baseUrl}/v1/sessions/sign_in`, {
+    const response = await $fetch<{ data: { accessToken?: string; access_token?: string } }>(`${baseUrl}/v1/sessions/sign_in`, {
       method: 'POST',
       body: {
         login: credentials.email,
@@ -44,14 +44,19 @@ export default defineEventHandler(async (event) => {
       },
     })
 
-    // Save session token
-    if (response.data?.accessToken) {
-      const settingsRef = settingsDoc.ref
-      await settingsRef.update({
-        noteSessionToken: response.data.accessToken,
-        updatedAt: new Date(),
-      })
+    // Extract token (handle both camelCase and snake_case response formats)
+    const token = response.data?.accessToken || response.data?.access_token
+
+    if (!token) {
+      return { success: false, error: 'ログインは成功しましたが、セッショントークンを取得できませんでした' }
     }
+
+    // Save session token
+    const settingsRef = settingsDoc.ref
+    await settingsRef.update({
+      noteSessionToken: token,
+      updatedAt: new Date(),
+    })
 
     return { success: true }
   } catch (error: unknown) {

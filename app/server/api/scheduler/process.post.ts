@@ -101,7 +101,7 @@ export default defineEventHandler(async (event) => {
 
       let postResult
       if (schedule.platform === 'note') {
-        postResult = await postToNote(article, platformSettings)
+        postResult = await postToNote(article, platformSettings, `platformSettings/${schedule.userId}_${schedule.projectId}`)
       } else {
         postResult = await postToX(article, platformSettings)
       }
