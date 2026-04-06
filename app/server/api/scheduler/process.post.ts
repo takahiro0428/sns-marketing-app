@@ -99,6 +99,18 @@ export default defineEventHandler(async (event) => {
       const article = articleDoc.data()!
       const platformSettings = settingsDoc.data()!
 
+      // Guard against duplicate posts
+      if (schedule.platform === 'note' && article.notePostId) {
+        await scheduleDoc.ref.update({ status: 'completed' })
+        results.push({ scheduleId: scheduleDoc.id, status: 'skipped', error: 'Already posted to Note' })
+        continue
+      }
+      if (schedule.platform === 'x' && article.xPostId) {
+        await scheduleDoc.ref.update({ status: 'completed' })
+        results.push({ scheduleId: scheduleDoc.id, status: 'skipped', error: 'Already posted to X' })
+        continue
+      }
+
       let postResult
       if (schedule.platform === 'note') {
         postResult = await postToNote(article, platformSettings, `platformSettings/${schedule.userId}_${schedule.projectId}`)

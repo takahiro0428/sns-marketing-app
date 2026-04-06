@@ -107,7 +107,7 @@ export async function postToNote(
       body: {
         name: article.title,
         body: article.body,
-        status: 'published',
+        status: 'draft',
         free: true,
         can_reprint: false,
         tags: (article.tags as string[]) || [],
@@ -151,20 +151,62 @@ export async function postToNote(
     throw new Error(`NOTE_POST_FAILED: 予期しないレスポンス形式です (${detail})`)
   }
 
-  // Resolve urlname: post response > login response > settings
-  const urlname = noteObj.user?.urlname
+  // Step 3: Publish the draft
+  // POST /api/v1/text_notes only creates a draft. A separate publish call is required.
+  const publishNote = async (cookies: string) => {
+    return await $fetch.raw(`${baseUrl}/v2/notes/${noteObj!.key}/publish`, {
+      method: 'PUT',
+      headers: {
+        'Cookie': cookies,
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    })
+  }
+
+  let publishResponse: Awaited<ReturnType<typeof publishNote>>
+  try {
+    publishResponse = await publishNote(sessionCookies)
+  } catch (error: unknown) {
+    const statusCode = (error as { statusCode?: number })?.statusCode
+    // If 401, session cookies may have expired — retry with fresh login
+    if (statusCode === 401) {
+      sessionCookies = await loginToNote()
+      await saveSessionData(sessionCookies)
+      try {
+        publishResponse = await publishNote(sessionCookies)
+      } catch (retryError: unknown) {
+        const retryStatus = (retryError as { statusCode?: number })?.statusCode
+        throw new Error(`NOTE_PUBLISH_FAILED: 記事の公開に失敗しました (${retryStatus || 'エラー'})`)
+      }
+    } else {
+      throw new Error(`NOTE_PUBLISH_FAILED: 記事の公開に失敗しました (${statusCode || 'ネットワークエラー'})`)
+    }
+  }
+
+  // Try to extract canonical URL or urlname from publish response
+  const publishBody = publishResponse!._data as Record<string, unknown> | undefined
+  const publishData = (publishBody?.data ?? publishBody) as
+    { note_url?: string; user?: { urlname?: string } } | undefined
+
+  // Resolve urlname: publish response > post response > login response > settings
+  const urlname = publishData?.user?.urlname
+    || noteObj.user?.urlname
     || loginUrlname
     || (settings.noteUrlname as string | undefined)
 
   let postUrl: string
-  if (noteObj.note_url) {
-    // Use canonical URL from API if available
+  if (publishData?.note_url) {
+    postUrl = publishData.note_url
+  } else if (noteObj.note_url) {
     postUrl = noteObj.note_url
   } else if (urlname) {
     postUrl = `https://note.com/${urlname}/n/${noteObj.key}`
   } else {
-    // Last resort: construct a usable URL without urlname
-    postUrl = `https://note.com/notes/${noteObj.key}`
+    // urlname unavailable — construct best-effort URL using the key.
+    // The article is already published at this point, so throwing would orphan it.
+    postUrl = `https://note.com/n/${noteObj.key}`
   }
 
   return {

@@ -58,6 +58,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  // Guard against duplicate posts — check if already posted to the requested platform
+  if (body.platform === 'note' && article.notePostId) {
+    throw createError({ statusCode: 409, statusMessage: 'ALREADY_POSTED', data: { platform: 'note', existingPostUrl: article.notePostUrl } })
+  }
+  if (body.platform === 'x' && article.xPostId) {
+    throw createError({ statusCode: 409, statusMessage: 'ALREADY_POSTED', data: { platform: 'x', existingPostUrl: article.xPostUrl } })
+  }
+
   // Post to platform
   let postResult: { postId: string; postUrl: string }
   try {
