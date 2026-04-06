@@ -42,6 +42,7 @@ export const DEFAULT_X_THROTTLE: ThrottleConfig = {
 export interface ThrottleCheckResult {
   allowed: boolean
   reason?: string
+  reasonType?: 'active_hours' | 'rate_limited'
   nextAllowedAt?: Date
   remainingToday: number
   remainingThisWeek: number
@@ -66,6 +67,7 @@ export function checkThrottle(
     nextStart.setHours(config.activeHoursStart, 0, 0, 0)
     return {
       allowed: false,
+      reasonType: 'active_hours',
       reason: `Outside active hours (${config.activeHoursStart}:00 - ${config.activeHoursEnd}:00)`,
       nextAllowedAt: nextStart,
       remainingToday: Math.max(0, config.dailyLimit - postsToday),
@@ -80,6 +82,7 @@ export function checkThrottle(
     tomorrow.setHours(config.activeHoursStart, 0, 0, 0)
     return {
       allowed: false,
+      reasonType: 'rate_limited',
       reason: `Daily limit reached (${config.dailyLimit} posts/day)`,
       nextAllowedAt: tomorrow,
       remainingToday: 0,
@@ -91,6 +94,7 @@ export function checkThrottle(
   if (postsThisWeek >= config.weeklyLimit) {
     return {
       allowed: false,
+      reasonType: 'rate_limited',
       reason: `Weekly limit reached (${config.weeklyLimit} posts/week)`,
       remainingToday: 0,
       remainingThisWeek: 0,
@@ -101,6 +105,7 @@ export function checkThrottle(
   if (postsThisMonth >= config.monthlyLimit) {
     return {
       allowed: false,
+      reasonType: 'rate_limited',
       reason: `Monthly limit reached (${config.monthlyLimit} posts/month)`,
       remainingToday: 0,
       remainingThisWeek: 0,
@@ -114,6 +119,7 @@ export function checkThrottle(
       const nextAllowed = new Date(lastPostedAt.getTime() + config.minIntervalMinutes * 60 * 1000)
       return {
         allowed: false,
+        reasonType: 'rate_limited',
         reason: `Minimum interval not met (${config.minIntervalMinutes} min between posts, ${Math.ceil(config.minIntervalMinutes - elapsed)} min remaining)`,
         nextAllowedAt: nextAllowed,
         remainingToday: Math.max(0, config.dailyLimit - postsToday),
@@ -190,7 +196,21 @@ export async function fetchAndCheckThrottle(
   const postsThisWeek = allLogs.filter((l) => l.postedAt && l.postedAt.toDate() >= weekStart).length
   const postsThisMonth = allLogs.length
 
-  const config = platform === 'note' ? DEFAULT_NOTE_THROTTLE : DEFAULT_X_THROTTLE
+  const config = { ...(platform === 'note' ? DEFAULT_NOTE_THROTTLE : DEFAULT_X_THROTTLE) }
+
+  // Override active hours from project settings
+  const projectDoc = await db.collection('projects').doc(projectId).get()
+  if (projectDoc.exists) {
+    const projectData = projectDoc.data()!
+    const start = projectData.activeHoursStart
+    const end = projectData.activeHoursEnd
+    if (typeof start === 'number' && typeof end === 'number'
+      && start >= 0 && start <= 23 && end >= 1 && end <= 24 && start < end) {
+      config.activeHoursStart = start
+      config.activeHoursEnd = end
+    }
+  }
+
   const result = checkThrottle(lastPostedAt, postsToday, postsThisWeek, postsThisMonth, config)
 
   return {
