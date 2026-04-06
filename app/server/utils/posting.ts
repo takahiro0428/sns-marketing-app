@@ -1,4 +1,4 @@
-import { decrypt } from '~/server/utils/encryption'
+import { decrypt, encrypt } from '~/server/utils/encryption'
 import { getAdminFirestore } from '~/server/utils/firebase-admin'
 import { createHmac, randomBytes } from 'crypto'
 
@@ -15,26 +15,36 @@ export async function postToNote(
   const config = useRuntimeConfig()
   const baseUrl = config.noteApiEndpoint || 'https://note.com/api'
 
-  // Step 1: Login to get session token
-  let sessionToken = settings.noteSessionToken as string | undefined
+  // Step 1: Login to get session cookies
+  // note.com uses cookie-based authentication (Set-Cookie headers), not Bearer tokens
+  let sessionCookies: string | undefined
+  const encryptedCookies = settings.noteSessionToken as string | undefined
+  if (encryptedCookies) {
+    try {
+      sessionCookies = decrypt(encryptedCookies)
+    } catch {
+      // Stored value may be a stale Bearer token from before migration; ignore and re-login
+      sessionCookies = undefined
+    }
+  }
 
-  const saveSessionToken = async (token: string) => {
+  const saveSessionCookies = async (cookies: string) => {
     if (!settingsDocPath) return
     try {
       const db = getAdminFirestore()
       await db.doc(settingsDocPath).update({
-        noteSessionToken: token,
+        noteSessionToken: encrypt(cookies),
         updatedAt: new Date(),
       })
     } catch {
-      // Non-blocking: token save failure should not stop the post
+      // Non-blocking: cookie save failure should not stop the post
     }
   }
 
-  const loginToNote = async () => {
+  const loginToNote = async (): Promise<string> => {
     const decryptedPassword = decrypt(credentials.password)
     try {
-      const loginResponse = await $fetch<{ data: { accessToken?: string; access_token?: string } }>(`${baseUrl}/v1/sessions/sign_in`, {
+      const loginResponse = await $fetch.raw(`${baseUrl}/v1/sessions/sign_in`, {
         method: 'POST',
         body: {
           login: credentials.email,
@@ -44,12 +54,21 @@ export async function postToNote(
           'Content-Type': 'application/json',
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },
+        redirect: 'manual',
       })
-      const token = loginResponse.data.accessToken || loginResponse.data.access_token
-      if (!token) {
-        throw new Error('NOTE_LOGIN_ERROR: セッショントークンを取得できませんでした')
+
+      // note.com returns auth info via Set-Cookie headers, not in response body
+      const setCookies = loginResponse.headers.getSetCookie()
+      if (!setCookies || setCookies.length === 0) {
+        throw new Error('NOTE_LOGIN_ERROR: セッションCookieを取得できませんでした')
       }
-      return token
+
+      // Build cookie string: extract "name=value" from each Set-Cookie header
+      const cookieString = setCookies.map(c => c.split(';')[0]).filter(Boolean).join('; ')
+      if (!cookieString) {
+        throw new Error('NOTE_LOGIN_ERROR: セッションCookieを取得できませんでした')
+      }
+      return cookieString
     } catch (error: unknown) {
       if (error instanceof Error && error.message.startsWith('NOTE_')) {
         throw error
@@ -62,16 +81,15 @@ export async function postToNote(
     }
   }
 
-  if (!sessionToken) {
-    sessionToken = await loginToNote()
-    await saveSessionToken(sessionToken)
+  if (!sessionCookies) {
+    sessionCookies = await loginToNote()
+    await saveSessionCookies(sessionCookies)
   }
 
-  // Step 2: Create note post (with session token retry)
-  const postNote = async (token: string) => {
-    return await $fetch<{
-      data: { id: number; key: string; user: { urlname: string } }
-    }>(`${baseUrl}/v3/notes`, {
+  // Step 2: Create note post (with session cookie retry)
+  // note.com uses /v1/text_notes for article creation with Cookie-based auth
+  const postNote = async (cookies: string) => {
+    return await $fetch.raw(`${baseUrl}/v1/text_notes`, {
       method: 'POST',
       body: {
         name: article.title,
@@ -82,24 +100,25 @@ export async function postToNote(
         tags: (article.tags as string[]) || [],
       },
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Cookie': cookies,
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'X-Requested-With': 'XMLHttpRequest',
       },
     })
   }
 
   let postResponse: Awaited<ReturnType<typeof postNote>>
   try {
-    postResponse = await postNote(sessionToken)
+    postResponse = await postNote(sessionCookies)
   } catch (error: unknown) {
     const statusCode = (error as { statusCode?: number })?.statusCode
-    // If 401, session may have expired — retry with fresh login
+    // If 401, session cookies may have expired — retry with fresh login
     if (statusCode === 401) {
-      sessionToken = await loginToNote()
-      await saveSessionToken(sessionToken)
+      sessionCookies = await loginToNote()
+      await saveSessionCookies(sessionCookies)
       try {
-        postResponse = await postNote(sessionToken)
+        postResponse = await postNote(sessionCookies)
       } catch (retryError: unknown) {
         const retryStatus = (retryError as { statusCode?: number })?.statusCode
         throw new Error(`NOTE_POST_FAILED: 記事の投稿に失敗しました (${retryStatus || 'エラー'})`)
@@ -109,11 +128,15 @@ export async function postToNote(
     }
   }
 
-  const noteData = postResponse.data
-  const postUrl = `https://note.com/${noteData.user.urlname}/n/${noteData.key}`
+  const noteData = postResponse._data as { data?: { id?: number; key?: string; user?: { urlname?: string } } } | undefined
+  const note = noteData?.data
+  if (!note?.id || !note?.key || !note?.user?.urlname) {
+    throw new Error('NOTE_POST_FAILED: 予期しないレスポンス形式です')
+  }
+  const postUrl = `https://note.com/${note.user.urlname}/n/${note.key}`
 
   return {
-    postId: String(noteData.id),
+    postId: String(note.id),
     postUrl,
   }
 }

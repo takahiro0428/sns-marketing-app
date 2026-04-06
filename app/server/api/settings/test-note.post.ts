@@ -1,5 +1,5 @@
 import { getAdminFirestore } from '~/server/utils/firebase-admin'
-import { decrypt } from '~/server/utils/encryption'
+import { decrypt, encrypt } from '~/server/utils/encryption'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{ projectId: string }>(event)
@@ -32,7 +32,8 @@ export default defineEventHandler(async (event) => {
     const baseUrl = config.noteApiEndpoint || 'https://note.com/api'
     const decryptedPassword = decrypt(credentials.password)
 
-    const response = await $fetch<{ data: { accessToken?: string; access_token?: string } }>(`${baseUrl}/v1/sessions/sign_in`, {
+    // note.com uses cookie-based auth: session info is in Set-Cookie headers, not response body
+    const response = await $fetch.raw(`${baseUrl}/v1/sessions/sign_in`, {
       method: 'POST',
       body: {
         login: credentials.email,
@@ -42,24 +43,35 @@ export default defineEventHandler(async (event) => {
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
+      redirect: 'manual',
     })
 
-    // Extract token (handle both camelCase and snake_case response formats)
-    const token = response.data?.accessToken || response.data?.access_token
+    // Extract session cookies from Set-Cookie response headers
+    const setCookies = response.headers.getSetCookie()
 
-    if (!token) {
-      return { success: false, error: 'ログインは成功しましたが、セッショントークンを取得できませんでした' }
+    if (!setCookies || setCookies.length === 0) {
+      return { success: false, error: 'ログインは成功しましたが、セッションCookieを取得できませんでした' }
     }
 
-    // Save session token
+    // Build cookie string: extract "name=value" from each Set-Cookie header
+    const cookieString = setCookies.map(c => c.split(';')[0]).filter(Boolean).join('; ')
+    if (!cookieString) {
+      return { success: false, error: 'ログインは成功しましたが、セッションCookieを取得できませんでした' }
+    }
+
+    // Save session cookies (encrypted at rest, consistent with password storage)
     const settingsRef = settingsDoc.ref
     await settingsRef.update({
-      noteSessionToken: token,
+      noteSessionToken: encrypt(cookieString),
       updatedAt: new Date(),
     })
 
     return { success: true }
   } catch (error: unknown) {
+    const statusCode = (error as { statusCode?: number })?.statusCode
+    if (statusCode === 401 || statusCode === 403) {
+      return { success: false, error: 'メールアドレスまたはパスワードが正しくありません' }
+    }
     const errMsg = error instanceof Error ? error.message : 'Unknown error'
     return { success: false, error: errMsg }
   }
