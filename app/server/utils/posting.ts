@@ -28,16 +28,22 @@ export async function postToNote(
     }
   }
 
-  const saveSessionCookies = async (cookies: string) => {
+  let loginUrlname: string | undefined
+
+  const saveSessionData = async (cookies: string) => {
     if (!settingsDocPath) return
     try {
       const db = getAdminFirestore()
-      await db.doc(settingsDocPath).update({
+      const updateData: Record<string, unknown> = {
         noteSessionToken: encrypt(cookies),
         updatedAt: new Date(),
-      })
+      }
+      if (loginUrlname) {
+        updateData.noteUrlname = loginUrlname
+      }
+      await db.doc(settingsDocPath).update(updateData)
     } catch {
-      // Non-blocking: cookie save failure should not stop the post
+      // Non-blocking: session save failure should not stop the post
     }
   }
 
@@ -68,6 +74,13 @@ export async function postToNote(
       if (!cookieString) {
         throw new Error('NOTE_LOGIN_ERROR: セッションCookieを取得できませんでした')
       }
+
+      // Extract urlname from login response for post URL construction fallback
+      const loginData = loginResponse._data as { data?: { urlname?: string } } | undefined
+      if (loginData?.data?.urlname) {
+        loginUrlname = loginData.data.urlname
+      }
+
       return cookieString
     } catch (error: unknown) {
       if (error instanceof Error && error.message.startsWith('NOTE_')) {
@@ -83,7 +96,7 @@ export async function postToNote(
 
   if (!sessionCookies) {
     sessionCookies = await loginToNote()
-    await saveSessionCookies(sessionCookies)
+    await saveSessionData(sessionCookies)
   }
 
   // Step 2: Create note post (with session cookie retry)
@@ -116,7 +129,7 @@ export async function postToNote(
     // If 401, session cookies may have expired — retry with fresh login
     if (statusCode === 401) {
       sessionCookies = await loginToNote()
-      await saveSessionCookies(sessionCookies)
+      await saveSessionData(sessionCookies)
       try {
         postResponse = await postNote(sessionCookies)
       } catch (retryError: unknown) {
@@ -128,15 +141,34 @@ export async function postToNote(
     }
   }
 
-  const noteData = postResponse._data as { data?: { id?: number; key?: string; user?: { urlname?: string } } } | undefined
-  const note = noteData?.data
-  if (!note?.id || !note?.key || !note?.user?.urlname) {
-    throw new Error('NOTE_POST_FAILED: 予期しないレスポンス形式です')
+  // Parse response — handle both nested ({ data: { ... } }) and flat ({ id, key, ... }) structures
+  const responseBody = postResponse._data as Record<string, unknown> | undefined
+  const noteObj = (responseBody?.data ?? responseBody) as
+    { id?: number; key?: string; note_url?: string; user?: { urlname?: string } } | undefined
+
+  if (!noteObj?.id || !noteObj?.key) {
+    const detail = responseBody ? JSON.stringify(responseBody).substring(0, 200) : 'empty response'
+    throw new Error(`NOTE_POST_FAILED: 予期しないレスポンス形式です (${detail})`)
   }
-  const postUrl = `https://note.com/${note.user.urlname}/n/${note.key}`
+
+  // Resolve urlname: post response > login response > settings
+  const urlname = noteObj.user?.urlname
+    || loginUrlname
+    || (settings.noteUrlname as string | undefined)
+
+  let postUrl: string
+  if (noteObj.note_url) {
+    // Use canonical URL from API if available
+    postUrl = noteObj.note_url
+  } else if (urlname) {
+    postUrl = `https://note.com/${urlname}/n/${noteObj.key}`
+  } else {
+    // Last resort: construct a usable URL without urlname
+    postUrl = `https://note.com/notes/${noteObj.key}`
+  }
 
   return {
-    postId: String(note.id),
+    postId: String(noteObj.id),
     postUrl,
   }
 }

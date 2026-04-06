@@ -185,6 +185,7 @@ export interface PlatformSettings {
   noteCredentials?: NoteCredentials
   xCredentials?: XCredentials
   noteSessionToken?: string
+  noteUrlname?: string
   noteSessionExpiresAt?: Timestamp
   createdAt: Timestamp
   updatedAt: Timestamp
