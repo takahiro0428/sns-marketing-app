@@ -2,6 +2,22 @@ import { decrypt, encrypt } from '~/server/utils/encryption'
 import { getAdminFirestore } from '~/server/utils/firebase-admin'
 import { createHmac, randomBytes } from 'crypto'
 
+/**
+ * Extract the XSRF-TOKEN value from a cookie string.
+ * note.com sets an XSRF-TOKEN cookie that must be sent back as the
+ * X-CSRF-Token header on state-changing requests (POST/PUT/DELETE).
+ */
+function extractCsrfToken(cookieString: string): string | undefined {
+  const match = cookieString.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)
+  if (!match) return undefined
+  // The cookie value is typically URL-encoded; decode it
+  try {
+    return decodeURIComponent(match[1])
+  } catch {
+    return match[1]
+  }
+}
+
 export async function postToNote(
   article: Record<string, unknown>,
   settings: Record<string, unknown>,
@@ -102,6 +118,19 @@ export async function postToNote(
   // Step 2: Create note post (with session cookie retry)
   // note.com uses /v1/text_notes for article creation with Cookie-based auth
   const postNote = async (cookies: string) => {
+    const csrfToken = extractCsrfToken(cookies)
+    if (!csrfToken) {
+      console.warn('[postToNote] XSRF-TOKEN not found in cookies — request may fail with 403')
+    }
+    const headers: Record<string, string> = {
+      'Cookie': cookies,
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'X-Requested-With': 'XMLHttpRequest',
+    }
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken
+    }
     return await $fetch.raw(`${baseUrl}/v1/text_notes`, {
       method: 'POST',
       body: {
@@ -112,12 +141,7 @@ export async function postToNote(
         can_reprint: false,
         tags: (article.tags as string[]) || [],
       },
-      headers: {
-        'Cookie': cookies,
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'X-Requested-With': 'XMLHttpRequest',
-      },
+      headers,
     })
   }
 
@@ -126,8 +150,8 @@ export async function postToNote(
     postResponse = await postNote(sessionCookies)
   } catch (error: unknown) {
     const statusCode = (error as { statusCode?: number })?.statusCode
-    // If 401, session cookies may have expired — retry with fresh login
-    if (statusCode === 401) {
+    // If 401/403, session cookies or CSRF token may have expired — retry with fresh login
+    if (statusCode === 401 || statusCode === 403) {
       sessionCookies = await loginToNote()
       await saveSessionData(sessionCookies)
       try {
@@ -154,14 +178,22 @@ export async function postToNote(
   // Step 3: Publish the draft
   // POST /api/v1/text_notes only creates a draft. A separate publish call is required.
   const publishNote = async (cookies: string) => {
+    const csrfToken = extractCsrfToken(cookies)
+    if (!csrfToken) {
+      console.warn('[postToNote] XSRF-TOKEN not found in cookies — publish request may fail with 403')
+    }
+    const headers: Record<string, string> = {
+      'Cookie': cookies,
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'X-Requested-With': 'XMLHttpRequest',
+    }
+    if (csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken
+    }
     return await $fetch.raw(`${baseUrl}/v2/notes/${noteObj!.key}/publish`, {
       method: 'PUT',
-      headers: {
-        'Cookie': cookies,
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'X-Requested-With': 'XMLHttpRequest',
-      },
+      headers,
     })
   }
 
@@ -170,8 +202,8 @@ export async function postToNote(
     publishResponse = await publishNote(sessionCookies)
   } catch (error: unknown) {
     const statusCode = (error as { statusCode?: number })?.statusCode
-    // If 401, session cookies may have expired — retry with fresh login
-    if (statusCode === 401) {
+    // If 401/403, session cookies or CSRF token may have expired — retry with fresh login
+    if (statusCode === 401 || statusCode === 403) {
       sessionCookies = await loginToNote()
       await saveSessionData(sessionCookies)
       try {
