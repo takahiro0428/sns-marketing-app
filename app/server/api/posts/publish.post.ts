@@ -45,9 +45,10 @@ export default defineEventHandler(async (event) => {
   const throttleResult = await fetchAndCheckThrottle(db, body.projectId, body.platform)
 
   if (!throttleResult.allowed) {
+    const isActiveHours = throttleResult.reasonType === 'active_hours'
     throw createError({
-      statusCode: 429,
-      statusMessage: 'RATE_LIMITED',
+      statusCode: isActiveHours ? 403 : 429,
+      statusMessage: isActiveHours ? 'OUTSIDE_ACTIVE_HOURS' : 'RATE_LIMITED',
       data: {
         reason: throttleResult.reason,
         nextAllowedAt: throttleResult.nextAllowedAt?.toISOString(),
