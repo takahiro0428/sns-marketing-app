@@ -59,12 +59,20 @@ export default defineEventHandler(async (event) => {
       return { success: false, error: 'ログインは成功しましたが、セッションCookieを取得できませんでした' }
     }
 
-    // Save session cookies (encrypted at rest, consistent with password storage)
+    // Extract urlname from login response for post URL construction
+    const loginData = response._data as { data?: { urlname?: string } } | undefined
+    const noteUrlname = loginData?.data?.urlname
+
+    // Save session cookies and urlname (encrypted at rest, consistent with password storage)
     const settingsRef = settingsDoc.ref
-    await settingsRef.update({
+    const updateData: Record<string, unknown> = {
       noteSessionToken: encrypt(cookieString),
       updatedAt: new Date(),
-    })
+    }
+    if (noteUrlname) {
+      updateData.noteUrlname = noteUrlname
+    }
+    await settingsRef.update(updateData)
 
     return { success: true }
   } catch (error: unknown) {
